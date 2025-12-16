@@ -9,6 +9,11 @@ public class MockKeyboardSimulator : IKeyboardSimulator
 {
     public List<(string Action, byte? Key)> Events { get; } = new();
 
+    /// <summary>
+    /// Set of keys that are "physically held" for testing purposes.
+    /// </summary>
+    public HashSet<byte> PhysicallyHeldKeys { get; } = new();
+
     public void KeyDown(byte virtualKey)
     {
         Events.Add(("KeyDown", virtualKey));
@@ -23,6 +28,11 @@ public class MockKeyboardSimulator : IKeyboardSimulator
     {
         Events.Add(("Sleep", null));
     }
+
+    public bool IsKeyPhysicallyDown(byte virtualKey)
+    {
+        return PhysicallyHeldKeys.Contains(virtualKey);
+    }
 }
 
 public class KeyboardSequencerTests
@@ -32,6 +42,11 @@ public class KeyboardSequencerTests
     private const byte VK_MENU = 0x12; // Alt
     private const byte VK_C = 0x43;
     private const byte VK_V = 0x56;
+
+    // Left/right variants for physical key simulation
+    private const byte VK_LCONTROL = 0xA2;
+    private const byte VK_LSHIFT = 0xA0;
+    private const byte VK_LMENU = 0xA4;
 
     [Fact]
     public void SendCopyWithModifierRelease_ReleasesAllModifiersFirst()
@@ -87,10 +102,13 @@ public class KeyboardSequencerTests
     }
 
     [Fact]
-    public void SendCopyWithModifierRelease_RepressesCtrlAltAtEnd()
+    public void SendCopyWithModifierRelease_RepressesCtrlAltAtEnd_WhenPhysicallyHeld()
     {
         // Arrange
         var mock = new MockKeyboardSimulator();
+        // Simulate user physically holding Ctrl+Alt (left variants)
+        mock.PhysicallyHeldKeys.Add(VK_LCONTROL);
+        mock.PhysicallyHeldKeys.Add(VK_LMENU);
         var sequencer = new KeyboardSequencer(mock);
 
         // Act
@@ -105,6 +123,45 @@ public class KeyboardSequencerTests
 
         Assert.Contains(VK_CONTROL, lastTwoKeyDowns);
         Assert.Contains(VK_MENU, lastTwoKeyDowns);
+    }
+
+    [Fact]
+    public void SendCopyWithModifierRelease_DoesNotRepressModifiers_WhenNotPhysicallyHeld()
+    {
+        // Arrange
+        var mock = new MockKeyboardSimulator();
+        // No keys physically held
+        var sequencer = new KeyboardSequencer(mock);
+
+        // Act
+        sequencer.SendCopyWithModifierRelease();
+
+        // Assert - After the Ctrl+C sequence (Ctrl down, C down, C up, Ctrl up),
+        // there should be no more KeyDown events
+        var events = mock.Events;
+        int ctrlUpAfterC = -1;
+        for (int i = 0; i < events.Count; i++)
+        {
+            if (events[i] == ("KeyUp", VK_C))
+            {
+                // Find Ctrl up after C up
+                for (int j = i + 1; j < events.Count; j++)
+                {
+                    if (events[j] == ("KeyUp", VK_CONTROL))
+                    {
+                        ctrlUpAfterC = j;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+
+        Assert.True(ctrlUpAfterC >= 0, "Ctrl up after C not found");
+
+        // No KeyDown events after the Ctrl up that ends Ctrl+C
+        var keyDownsAfterCtrlC = events.Skip(ctrlUpAfterC + 1).Where(e => e.Action == "KeyDown").ToList();
+        Assert.Empty(keyDownsAfterCtrlC);
     }
 
     [Fact]
@@ -161,10 +218,13 @@ public class KeyboardSequencerTests
     }
 
     [Fact]
-    public void SendPasteWithModifierRelease_RepressesCtrlShiftAtEnd()
+    public void SendPasteWithModifierRelease_RepressesCtrlShiftAtEnd_WhenPhysicallyHeld()
     {
         // Arrange
         var mock = new MockKeyboardSimulator();
+        // Simulate user physically holding Ctrl+Shift (left variants)
+        mock.PhysicallyHeldKeys.Add(VK_LCONTROL);
+        mock.PhysicallyHeldKeys.Add(VK_LSHIFT);
         var sequencer = new KeyboardSequencer(mock);
 
         // Act
@@ -179,6 +239,44 @@ public class KeyboardSequencerTests
 
         Assert.Contains(VK_CONTROL, lastTwoKeyDowns);
         Assert.Contains(VK_SHIFT, lastTwoKeyDowns);
+    }
+
+    [Fact]
+    public void SendPasteWithModifierRelease_DoesNotRepressModifiers_WhenNotPhysicallyHeld()
+    {
+        // Arrange
+        var mock = new MockKeyboardSimulator();
+        // No keys physically held
+        var sequencer = new KeyboardSequencer(mock);
+
+        // Act
+        sequencer.SendPasteWithModifierRelease();
+
+        // Assert - After the Ctrl+V sequence, there should be no more KeyDown events
+        var events = mock.Events;
+        int ctrlUpAfterV = -1;
+        for (int i = 0; i < events.Count; i++)
+        {
+            if (events[i] == ("KeyUp", VK_V))
+            {
+                // Find Ctrl up after V up
+                for (int j = i + 1; j < events.Count; j++)
+                {
+                    if (events[j] == ("KeyUp", VK_CONTROL))
+                    {
+                        ctrlUpAfterV = j;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+
+        Assert.True(ctrlUpAfterV >= 0, "Ctrl up after V not found");
+
+        // No KeyDown events after the Ctrl up that ends Ctrl+V
+        var keyDownsAfterCtrlV = events.Skip(ctrlUpAfterV + 1).Where(e => e.Action == "KeyDown").ToList();
+        Assert.Empty(keyDownsAfterCtrlV);
     }
 
     [Fact]
