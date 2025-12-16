@@ -38,9 +38,9 @@ The temp slot is your clipboard's short-term memory. Numbered slots are for thin
 
 ## The HUD
 
-Click the system tray icon to toggle a minimal heads-up display showing:
+Toggle the HUD via system tray or `Ctrl+Alt+H`. It shows:
 
-- **T** (Temp slot) - What you last copied
+- **T** (Temp slot) - What you last copied, with a promote button
 - **1-10** - Your numbered slots with content previews
 - **Lock icons** - Click to protect slots from being overwritten
 - **Arrow indicator** - Shows which slot will receive the next promotion (in Round Robin mode)
@@ -56,6 +56,18 @@ The HUD stays out of your way—drag it anywhere, and it remembers its position.
 ## Auto-Promote
 
 Enable this in settings if you want every clipboard copy to automatically save to a numbered slot. Combined with Round Robin mode, this gives you a classic clipboard history that keeps your last 10 copies.
+
+## Settings
+
+Right-click the tray icon and select Settings to configure:
+
+- **Slot Behavior** - Auto-promote and Round Robin vs Fixed mode
+- **Startup** - Launch with Windows, start minimized
+- **HUD** - Show on startup, click-through mode
+- **Appearance** - Choose from Dark, Light, or Terminal themes
+- **Data** - Clear all slots
+
+Settings and window positions are saved automatically.
 
 ## Supported Content Types
 

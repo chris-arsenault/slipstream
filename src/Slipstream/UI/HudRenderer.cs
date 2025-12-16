@@ -5,18 +5,7 @@ namespace Slipstream.UI;
 
 public class HudRenderer
 {
-    // Colors - modern dark theme
-    private static readonly SKColor BackgroundColor = new(30, 30, 30, 230);
-    private static readonly SKColor SlotBackgroundColor = new(45, 45, 45, 255);
-    private static readonly SKColor SlotHoverColor = new(55, 55, 55, 255);
-    private static readonly SKColor ActiveSlotColor = new(70, 130, 180, 255); // Steel blue accent
-    private static readonly SKColor TempSlotColor = new(80, 70, 50, 255); // Warm amber/orange tint for temp slot
-    private static readonly SKColor TempSlotBorderColor = new(180, 140, 60, 255); // Amber border
-    private static readonly SKColor LockedIndicatorColor = new(220, 80, 80, 255);
-    private static readonly SKColor TextColor = new(220, 220, 220, 255);
-    private static readonly SKColor SecondaryTextColor = new(150, 150, 150, 255);
-    private static readonly SKColor TypeGlyphColor = new(100, 100, 100, 255);
-    private static readonly SKColor BorderColor = new(60, 60, 60, 255);
+    private ColorTheme _theme = ColorTheme.Dark;
 
     // Layout constants
     private const float CornerRadius = 12f;
@@ -52,35 +41,35 @@ public class HudRenderer
     {
         _backgroundPaint = new SKPaint
         {
-            Color = BackgroundColor,
+            Color = _theme.Background,
             IsAntialias = true,
             Style = SKPaintStyle.Fill
         };
 
         _slotPaint = new SKPaint
         {
-            Color = SlotBackgroundColor,
+            Color = _theme.SlotBackground,
             IsAntialias = true,
             Style = SKPaintStyle.Fill
         };
 
         _activeSlotPaint = new SKPaint
         {
-            Color = ActiveSlotColor,
+            Color = _theme.SlotActive,
             IsAntialias = true,
             Style = SKPaintStyle.Fill
         };
 
         _tempSlotPaint = new SKPaint
         {
-            Color = TempSlotColor,
+            Color = _theme.Accent.WithAlpha(40),
             IsAntialias = true,
             Style = SKPaintStyle.Fill
         };
 
         _tempSlotBorderPaint = new SKPaint
         {
-            Color = TempSlotBorderColor,
+            Color = _theme.Accent,
             IsAntialias = true,
             Style = SKPaintStyle.Stroke,
             StrokeWidth = 2f
@@ -88,7 +77,7 @@ public class HudRenderer
 
         _textPaint = new SKPaint
         {
-            Color = TextColor,
+            Color = _theme.Text,
             IsAntialias = true,
             TextSize = 13f,
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
@@ -96,7 +85,7 @@ public class HudRenderer
 
         _secondaryTextPaint = new SKPaint
         {
-            Color = SecondaryTextColor,
+            Color = _theme.TextSecondary,
             IsAntialias = true,
             TextSize = 11f,
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
@@ -104,7 +93,7 @@ public class HudRenderer
 
         _indexPaint = new SKPaint
         {
-            Color = SecondaryTextColor,
+            Color = _theme.TextSecondary,
             IsAntialias = true,
             TextSize = 11f,
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold),
@@ -113,7 +102,7 @@ public class HudRenderer
 
         _typeGlyphPaint = new SKPaint
         {
-            Color = TypeGlyphColor,
+            Color = _theme.Accent,
             IsAntialias = true,
             TextSize = 10f,
             Typeface = SKTypeface.FromFamilyName("Consolas", SKFontStyle.Normal),
@@ -122,18 +111,39 @@ public class HudRenderer
 
         _lockIndicatorPaint = new SKPaint
         {
-            Color = LockedIndicatorColor,
+            Color = _theme.SlotLocked,
             IsAntialias = true,
             Style = SKPaintStyle.Fill
         };
 
         _borderPaint = new SKPaint
         {
-            Color = BorderColor,
+            Color = _theme.Border,
             IsAntialias = true,
             Style = SKPaintStyle.Stroke,
             StrokeWidth = 1f
         };
+    }
+
+    public void SetTheme(ColorPalette palette)
+    {
+        _theme = ColorTheme.GetTheme(palette);
+        UpdatePaintColors();
+    }
+
+    private void UpdatePaintColors()
+    {
+        _backgroundPaint.Color = _theme.Background;
+        _slotPaint.Color = _theme.SlotBackground;
+        _activeSlotPaint.Color = _theme.SlotActive;
+        _tempSlotPaint.Color = _theme.Accent.WithAlpha(40);
+        _tempSlotBorderPaint.Color = _theme.Accent;
+        _textPaint.Color = _theme.Text;
+        _secondaryTextPaint.Color = _theme.TextSecondary;
+        _indexPaint.Color = _theme.TextSecondary;
+        _typeGlyphPaint.Color = _theme.Accent;
+        _lockIndicatorPaint.Color = _theme.SlotLocked;
+        _borderPaint.Color = _theme.Border;
     }
 
     public void Render(SKCanvas canvas, SKSize size, List<ClipboardSlot> slots, int activeSlotIndex, ClipboardSlot? tempSlot = null, float dpiScale = 1.0f, int nextRoundRobinIndex = -1, bool isRoundRobinMode = true)
@@ -272,7 +282,7 @@ public class HudRenderer
             IsAntialias = true,
             Style = SKPaintStyle.Stroke,
             StrokeWidth = 2f,
-            Color = TempSlotBorderColor,
+            Color = _theme.Accent,
             StrokeCap = SKStrokeCap.Round
         };
 
@@ -297,7 +307,7 @@ public class HudRenderer
         {
             IsAntialias = true,
             Style = SKPaintStyle.Fill,
-            Color = TempSlotBorderColor // Amber color to match temp slot
+            Color = _theme.Accent
         };
 
         // Draw a right-pointing triangle
@@ -378,7 +388,7 @@ public class HudRenderer
             IsAntialias = true,
             Style = isLocked ? SKPaintStyle.Fill : SKPaintStyle.Stroke,
             StrokeWidth = 1.5f,
-            Color = isLocked ? LockedIndicatorColor : new SKColor(100, 100, 100, 180)
+            Color = isLocked ? _theme.SlotLocked : _theme.TextSecondary.WithAlpha(180)
         };
 
         // Lock body (rectangle at bottom)

@@ -219,6 +219,9 @@ public partial class App : Application
     {
         // Update our local settings reference so AutoPromote works
         _settings = settings;
+
+        // Update HUD theme when palette changes
+        _hudWindow?.SetTheme(settings.ColorPalette);
     }
 
     protected override void OnExit(ExitEventArgs e)
