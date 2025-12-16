@@ -6,24 +6,15 @@ namespace Slipstream.UI;
 public class SettingsRenderer
 {
     private AppSettings _settings;
-
-    // Colors
-    private static readonly SKColor BackgroundColor = new(35, 35, 35, 255);
-    private static readonly SKColor TitleBarColor = new(25, 25, 25, 255);
-    private static readonly SKColor TextColor = new(220, 220, 220, 255);
-    private static readonly SKColor SecondaryTextColor = new(150, 150, 150, 255);
-    private static readonly SKColor AccentColor = new(70, 130, 180, 255);
-    private static readonly SKColor ButtonColor = new(55, 55, 55, 255);
-    private static readonly SKColor ButtonHoverColor = new(70, 70, 70, 255);
-    private static readonly SKColor BorderColor = new(60, 60, 60, 255);
-    private static readonly SKColor CloseButtonHoverColor = new(200, 60, 60, 255);
+    private ColorTheme _theme;
 
     // Layout
     private const float TitleBarHeight = 40f;
     private const float CornerRadius = 12f;
-    private const float Padding = 20f;
-    private const float SectionSpacing = 24f;
-    private const float ItemSpacing = 12f;
+    private const float Padding = 16f;
+    private const float ColumnGap = 20f;
+    private const float SectionSpacing = 16f;
+    private const float ItemSpacing = 8f;
 
     // Paints
     private readonly SKPaint _backgroundPaint;
@@ -48,24 +39,25 @@ public class SettingsRenderer
     public SettingsRenderer(AppSettings settings)
     {
         _settings = settings;
+        _theme = ColorTheme.GetTheme(settings.ColorPalette);
 
         _backgroundPaint = new SKPaint
         {
-            Color = BackgroundColor,
+            Color = _theme.Background,
             IsAntialias = true,
             Style = SKPaintStyle.Fill
         };
 
         _titleBarPaint = new SKPaint
         {
-            Color = TitleBarColor,
+            Color = _theme.TitleBar,
             IsAntialias = true,
             Style = SKPaintStyle.Fill
         };
 
         _titlePaint = new SKPaint
         {
-            Color = TextColor,
+            Color = _theme.Text,
             IsAntialias = true,
             TextSize = 14f,
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
@@ -73,27 +65,43 @@ public class SettingsRenderer
 
         _textPaint = new SKPaint
         {
-            Color = TextColor,
+            Color = _theme.Text,
             IsAntialias = true,
-            TextSize = 13f,
+            TextSize = 12f,
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
         };
 
         _secondaryTextPaint = new SKPaint
         {
-            Color = SecondaryTextColor,
+            Color = _theme.TextSecondary,
             IsAntialias = true,
-            TextSize = 11f,
+            TextSize = 10f,
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
         };
 
         _borderPaint = new SKPaint
         {
-            Color = BorderColor,
+            Color = _theme.Border,
             IsAntialias = true,
             Style = SKPaintStyle.Stroke,
             StrokeWidth = 1f
         };
+    }
+
+    public void SetTheme(ColorPalette palette)
+    {
+        _theme = ColorTheme.GetTheme(palette);
+        UpdatePaintColors();
+    }
+
+    private void UpdatePaintColors()
+    {
+        _backgroundPaint.Color = _theme.Background;
+        _titleBarPaint.Color = _theme.TitleBar;
+        _titlePaint.Color = _theme.Text;
+        _textPaint.Color = _theme.Text;
+        _secondaryTextPaint.Color = _theme.TextSecondary;
+        _borderPaint.Color = _theme.Border;
     }
 
     public bool IsInTitleBar(SKPoint point)
@@ -153,7 +161,6 @@ public class SettingsRenderer
         if (_pressedButton == null)
             return;
 
-        // Check if still over the same button
         bool stillOverButton = false;
         if (_pressedButton == "close")
         {
@@ -201,7 +208,6 @@ public class SettingsRenderer
                 SettingsChanged?.Invoke(_settings);
                 break;
 
-
             case "showHudOnStart":
                 _settings.ShowHudOnStart = !_settings.ShowHudOnStart;
                 SettingsChanged?.Invoke(_settings);
@@ -226,6 +232,24 @@ public class SettingsRenderer
                 _settings.SlotBehavior = SlotBehavior.Fixed;
                 SettingsChanged?.Invoke(_settings);
                 break;
+
+            case "paletteDark":
+                _settings.ColorPalette = ColorPalette.Dark;
+                SetTheme(ColorPalette.Dark);
+                SettingsChanged?.Invoke(_settings);
+                break;
+
+            case "paletteLight":
+                _settings.ColorPalette = ColorPalette.Light;
+                SetTheme(ColorPalette.Light);
+                SettingsChanged?.Invoke(_settings);
+                break;
+
+            case "paletteTerminal":
+                _settings.ColorPalette = ColorPalette.Terminal;
+                SetTheme(ColorPalette.Terminal);
+                SettingsChanged?.Invoke(_settings);
+                break;
         }
     }
 
@@ -234,53 +258,64 @@ public class SettingsRenderer
         _buttons.Clear();
         canvas.Clear(SKColors.Transparent);
 
-        // Apply DPI scaling
         canvas.Save();
         canvas.Scale(dpiScale);
 
-        // Adjust size and mouse position for DPI-independent layout
         size = new SKSize(size.Width / dpiScale, size.Height / dpiScale);
         mousePos = new SKPoint(mousePos.X / dpiScale, mousePos.Y / dpiScale);
 
-        // Main background with rounded corners
+        // Main background
         var bgRect = new SKRoundRect(new SKRect(0, 0, size.Width, size.Height), CornerRadius);
         canvas.DrawRoundRect(bgRect, _backgroundPaint);
 
         // Title bar
         DrawTitleBar(canvas, size);
 
-        // Content area
-        float y = TitleBarHeight + Padding;
+        // Two-column layout
+        float contentTop = TitleBarHeight + Padding;
         float contentWidth = size.Width - Padding * 2;
+        float columnWidth = (contentWidth - ColumnGap) / 2;
+        float leftColumnX = Padding;
+        float rightColumnX = Padding + columnWidth + ColumnGap;
 
-        // Section: Data
-        y = DrawSection(canvas, "Data", y, contentWidth);
-        y = DrawClearAllSlotsButton(canvas, y, contentWidth);
-        y += SectionSpacing;
+        // === LEFT COLUMN ===
+        float leftY = contentTop;
 
-        // Section: Slot Behavior
-        y = DrawSection(canvas, "Slot Behavior", y, contentWidth);
-        y = DrawToggleSetting(canvas, "Auto-promote to numbered slot", _settings.AutoPromote, y, contentWidth, "autoPromote");
-        y = DrawRadioSetting(canvas, "Promote target", y, contentWidth,
+        // Slot Behavior section
+        leftY = DrawSectionHeader(canvas, "SLOT BEHAVIOR", leftColumnX, leftY, columnWidth);
+        leftY = DrawCompactToggle(canvas, "Auto-promote", _settings.AutoPromote, leftColumnX, leftY, columnWidth, "autoPromote");
+        leftY = DrawCompactRadioGroup(canvas, "Promote target:", leftColumnX, leftY, columnWidth,
             ("Round Robin", "slotBehaviorRoundRobin", _settings.SlotBehavior == SlotBehavior.RoundRobin),
-            ("Fixed (active slot)", "slotBehaviorFixed", _settings.SlotBehavior == SlotBehavior.Fixed));
-        y += SectionSpacing;
+            ("Fixed", "slotBehaviorFixed", _settings.SlotBehavior == SlotBehavior.Fixed));
+        leftY += SectionSpacing;
 
-        // Section: Startup
-        y = DrawSection(canvas, "Startup", y, contentWidth);
-        y = DrawToggleSetting(canvas, "Start with Windows", _settings.StartWithWindows, y, contentWidth, "startWithWindows");
-        y = DrawToggleSetting(canvas, "Start minimized", _settings.StartMinimized, y, contentWidth, "startMinimized");
-        y += SectionSpacing;
+        // Startup section
+        leftY = DrawSectionHeader(canvas, "STARTUP", leftColumnX, leftY, columnWidth);
+        leftY = DrawCompactToggle(canvas, "Start with Windows", _settings.StartWithWindows, leftColumnX, leftY, columnWidth, "startWithWindows");
+        leftY = DrawCompactToggle(canvas, "Start minimized", _settings.StartMinimized, leftColumnX, leftY, columnWidth, "startMinimized");
+        leftY += SectionSpacing;
 
-        // Section: HUD
-        y = DrawSection(canvas, "HUD", y, contentWidth);
-        y = DrawToggleSetting(canvas, "Show HUD on start", _settings.ShowHudOnStart, y, contentWidth, "showHudOnStart");
-        y = DrawToggleSetting(canvas, "Click-through mode", _settings.HudClickThrough, y, contentWidth, "hudClickThrough");
-        y += SectionSpacing;
+        // HUD section
+        leftY = DrawSectionHeader(canvas, "HUD", leftColumnX, leftY, columnWidth);
+        leftY = DrawCompactToggle(canvas, "Show on start", _settings.ShowHudOnStart, leftColumnX, leftY, columnWidth, "showHudOnStart");
+        leftY = DrawCompactToggle(canvas, "Click-through", _settings.HudClickThrough, leftColumnX, leftY, columnWidth, "hudClickThrough");
+        leftY += SectionSpacing;
 
-        // Section: Hotkeys
-        y = DrawSection(canvas, "Hotkeys", y, contentWidth);
-        y = DrawHotkeyInfo(canvas, y, contentWidth);
+        // Data section
+        leftY = DrawSectionHeader(canvas, "DATA", leftColumnX, leftY, columnWidth);
+        leftY = DrawCompactButton(canvas, "Clear All Slots", leftColumnX, leftY, columnWidth, "clearAllSlots", true);
+
+        // === RIGHT COLUMN ===
+        float rightY = contentTop;
+
+        // Appearance section
+        rightY = DrawSectionHeader(canvas, "APPEARANCE", rightColumnX, rightY, columnWidth);
+        rightY = DrawPaletteSelectorCompact(canvas, rightColumnX, rightY, columnWidth);
+        rightY += SectionSpacing;
+
+        // Hotkeys section
+        rightY = DrawSectionHeader(canvas, "HOTKEYS", rightColumnX, rightY, columnWidth);
+        rightY = DrawHotkeyInfoCompact(canvas, rightColumnX, rightY, columnWidth);
 
         // Border
         canvas.DrawRoundRect(bgRect, _borderPaint);
@@ -290,7 +325,6 @@ public class SettingsRenderer
 
     private void DrawTitleBar(SKCanvas canvas, SKSize size)
     {
-        // Title bar background
         var titleBarPath = new SKPath();
         titleBarPath.AddRoundRect(new SKRect(0, 0, size.Width, TitleBarHeight + CornerRadius),
             CornerRadius, CornerRadius);
@@ -300,10 +334,8 @@ public class SettingsRenderer
         canvas.DrawPath(titleBarPath, _titleBarPaint);
         canvas.Restore();
 
-        // Title text
         canvas.DrawText("Slipstream Settings", Padding, TitleBarHeight / 2 + _titlePaint.TextSize / 3, _titlePaint);
 
-        // Close button
         float closeSize = 20f;
         _closeButtonRect = new SKRect(
             size.Width - Padding - closeSize,
@@ -314,14 +346,13 @@ public class SettingsRenderer
 
         if (_closeButtonHovered)
         {
-            using var hoverPaint = new SKPaint { Color = CloseButtonHoverColor, IsAntialias = true };
+            using var hoverPaint = new SKPaint { Color = _theme.DangerHover, IsAntialias = true };
             canvas.DrawRoundRect(new SKRoundRect(_closeButtonRect, 4), hoverPaint);
         }
 
-        // Draw X
         using var xPaint = new SKPaint
         {
-            Color = TextColor,
+            Color = _theme.Text,
             IsAntialias = true,
             StrokeWidth = 2f,
             Style = SKPaintStyle.Stroke
@@ -333,183 +364,253 @@ public class SettingsRenderer
         canvas.DrawLine(cx + xSize, cy - xSize, cx - xSize, cy + xSize, xPaint);
     }
 
-    private float DrawSection(SKCanvas canvas, string title, float y, float width)
+    private float DrawSectionHeader(SKCanvas canvas, string title, float x, float y, float width)
     {
-        using var sectionPaint = new SKPaint
+        using var paint = new SKPaint
         {
-            Color = AccentColor,
+            Color = _theme.Accent,
             IsAntialias = true,
-            TextSize = 12f,
+            TextSize = 10f,
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
         };
 
-        canvas.DrawText(title.ToUpperInvariant(), Padding, y + sectionPaint.TextSize, sectionPaint);
+        canvas.DrawText(title, x, y + paint.TextSize, paint);
 
-        // Underline
-        float textWidth = sectionPaint.MeasureText(title.ToUpperInvariant());
+        float textWidth = paint.MeasureText(title);
         using var linePaint = new SKPaint
         {
-            Color = AccentColor.WithAlpha(100),
+            Color = _theme.Accent.WithAlpha(80),
             IsAntialias = true,
             StrokeWidth = 1f
         };
-        canvas.DrawLine(Padding, y + sectionPaint.TextSize + 4, Padding + textWidth, y + sectionPaint.TextSize + 4, linePaint);
+        canvas.DrawLine(x, y + paint.TextSize + 3, x + textWidth, y + paint.TextSize + 3, linePaint);
 
-        return y + sectionPaint.TextSize + ItemSpacing + 8;
+        return y + paint.TextSize + 10;
     }
 
-    private float DrawClearAllSlotsButton(SKCanvas canvas, float y, float width)
+    private float DrawCompactToggle(SKCanvas canvas, string label, bool value, float x, float y, float width, string id)
     {
-        float btnHeight = 32f;
-        float btnWidth = 120f;
-        float rightX = Padding + width;
+        float toggleWidth = 36f;
+        float toggleHeight = 18f;
+        float rowHeight = 22f;
 
-        var btnRect = new SKRect(rightX - btnWidth, y, rightX, y + btnHeight);
+        canvas.DrawText(label, x, y + _textPaint.TextSize, _textPaint);
 
-        // Draw button
-        var btnColor = _hoveredButton == "clearAllSlots" ? new SKColor(180, 60, 60) : new SKColor(140, 50, 50);
+        var toggleRect = new SKRect(x + width - toggleWidth, y + (rowHeight - toggleHeight) / 2, x + width, y + (rowHeight - toggleHeight) / 2 + toggleHeight);
+
+        var trackColor = value ? _theme.Accent : _theme.Button;
+        if (_hoveredButton == id)
+        {
+            trackColor = value ? _theme.Accent.WithAlpha(220) : _theme.ButtonHover;
+        }
+        using var trackPaint = new SKPaint { Color = trackColor, IsAntialias = true };
+        canvas.DrawRoundRect(new SKRoundRect(toggleRect, toggleHeight / 2), trackPaint);
+
+        float thumbRadius = toggleHeight / 2 - 2;
+        float thumbX = value ? toggleRect.Right - thumbRadius - 3 : toggleRect.Left + thumbRadius + 3;
+        using var thumbPaint = new SKPaint { Color = SKColors.White, IsAntialias = true };
+        canvas.DrawCircle(thumbX, toggleRect.MidY, thumbRadius, thumbPaint);
+
+        _buttons.Add(new ButtonRect(id, new SKRect(x, y, x + width, y + rowHeight)));
+
+        return y + rowHeight + ItemSpacing;
+    }
+
+    private float DrawCompactRadioGroup(SKCanvas canvas, string label, float x, float y, float width, params (string Label, string Id, bool Selected)[] options)
+    {
+        canvas.DrawText(label, x, y + _textPaint.TextSize, _textPaint);
+        y += _textPaint.TextSize + 6;
+
+        float radioSize = 14f;
+        float optionX = x + 8;
+
+        foreach (var (optionLabel, id, selected) in options)
+        {
+            var isHovered = _hoveredButton == id;
+
+            var radioRect = new SKRect(optionX, y, optionX + radioSize, y + radioSize);
+
+            using var outlinePaint = new SKPaint
+            {
+                Color = isHovered ? _theme.Accent : _theme.TextSecondary,
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 1.5f
+            };
+            canvas.DrawOval(radioRect, outlinePaint);
+
+            if (selected)
+            {
+                using var fillPaint = new SKPaint
+                {
+                    Color = _theme.Accent,
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Fill
+                };
+                var innerRect = new SKRect(optionX + 3, y + 3, optionX + radioSize - 3, y + radioSize - 3);
+                canvas.DrawOval(innerRect, fillPaint);
+            }
+
+            float labelX = optionX + radioSize + 4;
+            canvas.DrawText(optionLabel, labelX, y + _textPaint.TextSize - 2, _textPaint);
+
+            float labelWidth = _textPaint.MeasureText(optionLabel);
+            var clickRect = new SKRect(optionX, y - 2, labelX + labelWidth + 4, y + radioSize + 2);
+            _buttons.Add(new ButtonRect(id, clickRect));
+
+            optionX = labelX + labelWidth + 16;
+        }
+
+        return y + radioSize + ItemSpacing;
+    }
+
+    private float DrawCompactButton(SKCanvas canvas, string label, float x, float y, float width, string id, bool isDanger = false)
+    {
+        float btnHeight = 26f;
+        float btnWidth = Math.Min(width, 110f);
+
+        var btnRect = new SKRect(x, y, x + btnWidth, y + btnHeight);
+
+        var btnColor = isDanger
+            ? (_hoveredButton == id ? _theme.DangerHover : _theme.Danger)
+            : (_hoveredButton == id ? _theme.ButtonHover : _theme.Button);
+
         using var btnPaint = new SKPaint { Color = btnColor, IsAntialias = true };
         canvas.DrawRoundRect(new SKRoundRect(btnRect, 4), btnPaint);
 
         using var btnTextPaint = new SKPaint
         {
-            Color = TextColor,
+            Color = _theme.Text,
             IsAntialias = true,
-            TextSize = 13f,
+            TextSize = 11f,
             TextAlign = SKTextAlign.Center,
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
         };
-        canvas.DrawText("Clear All Slots", btnRect.MidX, btnRect.MidY + 5, btnTextPaint);
-        _buttons.Add(new ButtonRect("clearAllSlots", btnRect));
-
-        // Description text
-        canvas.DrawText("Remove all clipboard data from slots", Padding, y + _textPaint.TextSize, _textPaint);
+        canvas.DrawText(label, btnRect.MidX, btnRect.MidY + 4, btnTextPaint);
+        _buttons.Add(new ButtonRect(id, btnRect));
 
         return y + btnHeight + ItemSpacing;
     }
 
-    private float DrawToggleSetting(SKCanvas canvas, string label, bool value, float y, float width, string id)
+    private float DrawPaletteSelectorCompact(SKCanvas canvas, float x, float y, float width)
     {
-        canvas.DrawText(label, Padding, y + _textPaint.TextSize, _textPaint);
+        float swatchWidth = 56f;
+        float swatchHeight = 36f;
+        float swatchSpacing = 8f;
 
-        float toggleWidth = 44f;
-        float toggleHeight = 22f;
-        float rightX = Padding + width;
-
-        var toggleRect = new SKRect(rightX - toggleWidth, y, rightX, y + toggleHeight);
-
-        // Track - highlight if hovered
-        var trackColor = value ? AccentColor : new SKColor(80, 80, 80);
-        if (_hoveredButton == id)
+        var palettes = new[]
         {
-            trackColor = value ? AccentColor.WithAlpha(220) : new SKColor(100, 100, 100);
-        }
-        using var trackPaint = new SKPaint
-        {
-            Color = trackColor,
-            IsAntialias = true
+            ("Dark", "paletteDark", ColorPalette.Dark, ColorTheme.Dark),
+            ("Light", "paletteLight", ColorPalette.Light, ColorTheme.Light),
+            ("Terminal", "paletteTerminal", ColorPalette.Terminal, ColorTheme.Terminal)
         };
-        canvas.DrawRoundRect(new SKRoundRect(toggleRect, toggleHeight / 2), trackPaint);
 
-        // Thumb
-        float thumbRadius = toggleHeight / 2 - 3;
-        float thumbX = value ? toggleRect.Right - thumbRadius - 4 : toggleRect.Left + thumbRadius + 4;
-        using var thumbPaint = new SKPaint { Color = SKColors.White, IsAntialias = true };
-        canvas.DrawCircle(thumbX, toggleRect.MidY, thumbRadius, thumbPaint);
+        float startX = x;
 
-        _buttons.Add(new ButtonRect(id, toggleRect));
-
-        return y + toggleHeight + ItemSpacing;
-    }
-
-    private float DrawRadioSetting(SKCanvas canvas, string label, float y, float width, params (string Label, string Id, bool Selected)[] options)
-    {
-        canvas.DrawText(label, Padding, y + _textPaint.TextSize, _textPaint);
-        y += _textPaint.TextSize + 8;
-
-        float radioSize = 18f;
-        float optionSpacing = 16f;
-
-        foreach (var (optionLabel, id, selected) in options)
+        foreach (var (label, id, palette, theme) in palettes)
         {
-            float optionX = Padding + 8;
+            bool isSelected = _settings.ColorPalette == palette;
+            bool isHovered = _hoveredButton == id;
 
-            // Radio circle outline
-            var radioRect = new SKRect(optionX, y, optionX + radioSize, y + radioSize);
-            var isHovered = _hoveredButton == id;
+            var swatchRect = new SKRect(startX, y, startX + swatchWidth, y + swatchHeight);
 
-            using var outlinePaint = new SKPaint
+            using var bgPaint = new SKPaint { Color = theme.Background, IsAntialias = true };
+            canvas.DrawRoundRect(new SKRoundRect(swatchRect, 4), bgPaint);
+
+            // Mini slot
+            float miniSlotY = y + 5;
+            var miniSlotRect = new SKRect(startX + 4, miniSlotY, startX + swatchWidth - 4, miniSlotY + 8);
+            using var slotPaint = new SKPaint { Color = theme.SlotBackground, IsAntialias = true };
+            canvas.DrawRoundRect(new SKRoundRect(miniSlotRect, 2), slotPaint);
+
+            // Accent bar
+            float accentY = miniSlotY + 10;
+            var accentRect = new SKRect(startX + 4, accentY, startX + swatchWidth - 4, accentY + 5);
+            using var accentPaint = new SKPaint { Color = theme.Accent, IsAntialias = true };
+            canvas.DrawRoundRect(new SKRoundRect(accentRect, 2), accentPaint);
+
+            // Text sample
+            using var textPaint = new SKPaint
             {
-                Color = isHovered ? AccentColor : new SKColor(120, 120, 120),
+                Color = theme.Text,
+                IsAntialias = true,
+                TextSize = 7f,
+                TextAlign = SKTextAlign.Center,
+                Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
+            };
+            canvas.DrawText("Abc", swatchRect.MidX, accentY + 14, textPaint);
+
+            // Border
+            var borderColor = isSelected ? _theme.Accent : (isHovered ? _theme.Accent.WithAlpha(150) : _theme.Border);
+            float borderWidth = isSelected ? 2f : 1f;
+            using var borderPaint = new SKPaint
+            {
+                Color = borderColor,
                 IsAntialias = true,
                 Style = SKPaintStyle.Stroke,
-                StrokeWidth = 2f
+                StrokeWidth = borderWidth
             };
-            canvas.DrawOval(radioRect, outlinePaint);
+            canvas.DrawRoundRect(new SKRoundRect(swatchRect, 4), borderPaint);
 
-            // Radio fill if selected
-            if (selected)
-            {
-                using var fillPaint = new SKPaint
-                {
-                    Color = AccentColor,
-                    IsAntialias = true,
-                    Style = SKPaintStyle.Fill
-                };
-                var innerRect = new SKRect(optionX + 4, y + 4, optionX + radioSize - 4, y + radioSize - 4);
-                canvas.DrawOval(innerRect, fillPaint);
-            }
+            _buttons.Add(new ButtonRect(id, swatchRect));
 
-            // Option label
-            canvas.DrawText(optionLabel, optionX + radioSize + 8, y + _textPaint.TextSize, _textPaint);
-
-            // Clickable area includes label
-            float labelWidth = _textPaint.MeasureText(optionLabel);
-            var clickRect = new SKRect(optionX, y, optionX + radioSize + 8 + labelWidth + 8, y + radioSize);
-            _buttons.Add(new ButtonRect(id, clickRect));
-
-            y += radioSize + optionSpacing;
+            startX += swatchWidth + swatchSpacing;
         }
 
-        return y;
+        // Labels
+        y += swatchHeight + 2;
+        startX = x;
+
+        using var labelPaint = new SKPaint
+        {
+            Color = _theme.TextSecondary,
+            IsAntialias = true,
+            TextSize = 9f,
+            TextAlign = SKTextAlign.Center,
+            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
+        };
+
+        foreach (var (label, _, _, _) in palettes)
+        {
+            canvas.DrawText(label, startX + swatchWidth / 2, y + labelPaint.TextSize, labelPaint);
+            startX += swatchWidth + swatchSpacing;
+        }
+
+        return y + labelPaint.TextSize + ItemSpacing;
     }
 
-    private float DrawHotkeyInfo(SKCanvas canvas, float y, float width)
+    private float DrawHotkeyInfoCompact(SKCanvas canvas, float x, float y, float width)
     {
         var hotkeys = new[]
         {
-            ("Copy to slot 1-10", "Ctrl+Alt+1-0"),
-            ("Paste from slot 1-10", "Ctrl+Shift+1-0"),
-            ("Promote temp slot", "Ctrl+Alt+C"),
-            ("Paste from active slot", "Ctrl+Alt+V"),
-            ("Cycle slots", "Ctrl+Alt+Up/Down"),
+            ("Copy to slot", "Ctrl+Alt+1-0"),
+            ("Paste from slot", "Ctrl+Shift+1-0"),
+            ("Promote temp", "Ctrl+Alt+C"),
+            ("Paste active", "Ctrl+Alt+V"),
+            ("Cycle slots", "Ctrl+Alt+↑↓"),
             ("Toggle HUD", "Ctrl+Alt+H"),
+        };
+
+        using var keyPaint = new SKPaint
+        {
+            Color = _theme.TextSecondary,
+            IsAntialias = true,
+            TextSize = 10f,
+            TextAlign = SKTextAlign.Right,
+            Typeface = SKTypeface.FromFamilyName("Consolas", SKFontStyle.Normal)
         };
 
         foreach (var (action, keys) in hotkeys)
         {
-            canvas.DrawText(action, Padding, y + _textPaint.TextSize, _textPaint);
-
-            using var keyPaint = new SKPaint
-            {
-                Color = SecondaryTextColor,
-                IsAntialias = true,
-                TextSize = 12f,
-                TextAlign = SKTextAlign.Right,
-                Typeface = SKTypeface.FromFamilyName("Consolas", SKFontStyle.Normal)
-            };
-            canvas.DrawText(keys, Padding + width, y + _textPaint.TextSize, keyPaint);
-
-            y += _textPaint.TextSize + 8;
+            canvas.DrawText(action, x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
+            canvas.DrawText(keys, x + width, y + _secondaryTextPaint.TextSize, keyPaint);
+            y += _secondaryTextPaint.TextSize + 5;
         }
 
-        y += ItemSpacing;
+        y += 4;
+        canvas.DrawText("Edit config.json to customize", x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
 
-        // Note about customization
-        canvas.DrawText("Edit config.json to customize hotkeys", Padding, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
-        y += _secondaryTextPaint.TextSize + ItemSpacing;
-
-        return y;
+        return y + _secondaryTextPaint.TextSize + ItemSpacing;
     }
 
     private record ButtonRect(string Id, SKRect Rect);

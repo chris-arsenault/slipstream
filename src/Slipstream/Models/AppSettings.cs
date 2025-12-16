@@ -19,6 +19,9 @@ public class AppSettings
     public float HudOpacity { get; set; } = 0.9f;
     public bool HudClickThrough { get; set; } = false;
 
+    // Appearance
+    public ColorPalette ColorPalette { get; set; } = ColorPalette.Dark;
+
     // Window positions (null = use default positioning)
     public double? HudWindowX { get; set; } = null;
     public double? HudWindowY { get; set; } = null;
@@ -108,6 +111,13 @@ public enum HudPosition
     BottomLeft,
     BottomRight,
     Floating
+}
+
+public enum ColorPalette
+{
+    Dark,       // Current dark theme with blue accent
+    Light,      // Light mode
+    Terminal    // Dark with green text (classic terminal)
 }
 
 [Flags]

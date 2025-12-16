@@ -25,6 +25,9 @@ public partial class HudWindow : Window
         _settings = settings;
         _renderer = new HudRenderer();
 
+        // Apply initial theme from settings
+        _renderer.SetTheme(settings.ColorPalette);
+
         // Subscribe to slot changes
         _slotManager.SlotChanged += (_, _) => Refresh();
 
@@ -110,6 +113,12 @@ public partial class HudWindow : Window
     public void Refresh()
     {
         Dispatcher.Invoke(() => SkiaCanvas.InvalidateVisual());
+    }
+
+    public void SetTheme(ColorPalette palette)
+    {
+        _renderer.SetTheme(palette);
+        Refresh();
     }
 
     private void SkiaCanvas_PaintSurface(object sender, SKPaintSurfaceEventArgs e)
