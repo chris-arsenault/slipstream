@@ -42,8 +42,8 @@ public partial class App : Application
         _keyboardSequencer = new KeyboardSequencer(new KeyboardSimulator());
         _pasteEngine = new PasteEngine(_keyboardSequencer);
 
-        // Create HUD window (hidden by default)
-        _hudWindow = new HudWindow(_slotManager);
+        // Create HUD window
+        _hudWindow = new HudWindow(_slotManager, _configService, _settings);
 
         // Initialize clipboard monitor using message window
         _clipboardMonitor = new ClipboardMonitor(hwnd, hwndSource);
@@ -75,6 +75,13 @@ public partial class App : Application
         };
         _modifierCleanupTimer.Tick += OnModifierCleanupTick;
         _modifierCleanupTimer.Start();
+
+        // Show HUD on startup if configured
+        if (_settings.ShowHudOnStart)
+        {
+            _hudWindow.Show();
+            _trayManager.UpdateHudVisibility(true);
+        }
     }
 
     private void OnModifierCleanupTick(object? sender, EventArgs e)
