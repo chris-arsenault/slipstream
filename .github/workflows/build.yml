@@ -30,6 +30,9 @@ jobs:
       - name: Publish Installer Build
         run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained -p:Version=${{ env.VERSION }} -o publish/installer-build
 
+      - name: Install NSIS
+        run: choco install nsis -y
+
       - name: Create Installer
         run: |
           $installerScript = @"
