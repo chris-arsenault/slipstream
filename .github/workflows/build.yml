@@ -67,15 +67,60 @@ jobs:
           !insertmacro MUI_PAGE_INSTFILES
           !insertmacro MUI_LANGUAGE "English"
 
+          !define UNINSTALL_REG_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\`${PRODUCT_NAME}"
+
+          ; Check if app is running and prompt to close
+          Function .onInit
+            FindWindow `$0 "" "Slipstream"
+            StrCmp `$0 0 notRunning
+              MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "Slipstream is currently running.$\n$\nClick OK to close it and continue, or Cancel to abort." IDOK closeApp
+              Abort
+            closeApp:
+              FindWindow `$0 "" "Slipstream"
+              StrCmp `$0 0 notRunning
+              SendMessage `$0 16 0 0 ; WM_CLOSE
+              Sleep 1000
+              Goto closeApp
+            notRunning:
+          FunctionEnd
+
+          Function un.onInit
+            FindWindow `$0 "" "Slipstream"
+            StrCmp `$0 0 notRunning
+              MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "Slipstream is currently running.$\n$\nClick OK to close it and continue, or Cancel to abort." IDOK closeApp
+              Abort
+            closeApp:
+              FindWindow `$0 "" "Slipstream"
+              StrCmp `$0 0 notRunning
+              SendMessage `$0 16 0 0 ; WM_CLOSE
+              Sleep 1000
+              Goto closeApp
+            notRunning:
+          FunctionEnd
+
           Section "Install"
             SetOutPath "`$INSTDIR"
             File /r "installer-build\*.*"
             CreateShortcut "`$DESKTOP\Slipstream.lnk" "`$INSTDIR\Slipstream.exe"
             CreateShortcut "`$SMPROGRAMS\Slipstream.lnk" "`$INSTDIR\Slipstream.exe"
             WriteUninstaller "`$INSTDIR\Uninstall.exe"
+
+            ; Add to Add/Remove Programs
+            WriteRegStr HKCU "`${UNINSTALL_REG_KEY}" "DisplayName" "`${PRODUCT_NAME}"
+            WriteRegStr HKCU "`${UNINSTALL_REG_KEY}" "DisplayVersion" "${{ env.VERSION }}"
+            WriteRegStr HKCU "`${UNINSTALL_REG_KEY}" "Publisher" "`${PUBLISHER}"
+            WriteRegStr HKCU "`${UNINSTALL_REG_KEY}" "DisplayIcon" "`$INSTDIR\Slipstream.exe"
+            WriteRegStr HKCU "`${UNINSTALL_REG_KEY}" "UninstallString" "`$INSTDIR\Uninstall.exe"
+            WriteRegStr HKCU "`${UNINSTALL_REG_KEY}" "InstallLocation" "`$INSTDIR"
+            WriteRegStr HKCU "`${UNINSTALL_REG_KEY}" "URLInfoAbout" "`${WEBSITE}"
+            WriteRegDWORD HKCU "`${UNINSTALL_REG_KEY}" "NoModify" 1
+            WriteRegDWORD HKCU "`${UNINSTALL_REG_KEY}" "NoRepair" 1
           SectionEnd
 
           Section "Uninstall"
+            ; Remove from Add/Remove Programs
+            DeleteRegKey HKCU "`${UNINSTALL_REG_KEY}"
+
             RMDir /r "`$INSTDIR"
             Delete "`$DESKTOP\Slipstream.lnk"
             Delete "`$SMPROGRAMS\Slipstream.lnk"
