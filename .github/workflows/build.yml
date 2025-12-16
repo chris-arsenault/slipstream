@@ -1,0 +1,101 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  VERSION: "0.8.0"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Test
+        run: dotnet test --verbosity normal
+
+      - name: Publish Standalone
+        run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:Version=${{ env.VERSION }} -o publish/standalone
+
+      - name: Publish Installer Build
+        run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained -p:Version=${{ env.VERSION }} -o publish/installer-build
+
+      - name: Create Installer
+        run: |
+          $installerScript = @"
+          !include "MUI2.nsh"
+          Name "Slipstream"
+          OutFile "Slipstream-${{ env.VERSION }}-Setup.exe"
+          InstallDir "`$LOCALAPPDATA\Slipstream"
+          RequestExecutionLevel user
+
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "English"
+
+          Section "Install"
+            SetOutPath "`$INSTDIR"
+            File /r "installer-build\*.*"
+            CreateShortcut "`$DESKTOP\Slipstream.lnk" "`$INSTDIR\Slipstream.exe"
+            CreateShortcut "`$SMPROGRAMS\Slipstream.lnk" "`$INSTDIR\Slipstream.exe"
+            WriteUninstaller "`$INSTDIR\Uninstall.exe"
+          SectionEnd
+
+          Section "Uninstall"
+            RMDir /r "`$INSTDIR"
+            Delete "`$DESKTOP\Slipstream.lnk"
+            Delete "`$SMPROGRAMS\Slipstream.lnk"
+          SectionEnd
+          "@
+          $installerScript | Out-File -FilePath publish/installer.nsi -Encoding UTF8
+        shell: pwsh
+
+      - name: Build NSIS Installer
+        uses: joncloud/makensis-action@v4
+        with:
+          script-file: publish/installer.nsi
+          arguments: "/V3"
+
+      - name: Prepare Release Assets
+        run: |
+          mv publish/standalone/Slipstream.exe publish/Slipstream-${{ env.VERSION }}-Portable.exe
+          mv publish/Slipstream-${{ env.VERSION }}-Setup.exe publish/
+        shell: bash
+
+      - name: Upload Portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Slipstream-Portable
+          path: publish/Slipstream-${{ env.VERSION }}-Portable.exe
+
+      - name: Upload Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Slipstream-Installer
+          path: publish/Slipstream-${{ env.VERSION }}-Setup.exe
+
+      - name: Create Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Slipstream v${{ env.VERSION }}
+          body: |
+            ## Downloads
+            - **Slipstream-${{ env.VERSION }}-Portable.exe** - Standalone executable, no installation required
+            - **Slipstream-${{ env.VERSION }}-Setup.exe** - Windows installer with Start Menu and Desktop shortcuts
+          files: |
+            publish/Slipstream-${{ env.VERSION }}-Portable.exe
+            publish/Slipstream-${{ env.VERSION }}-Setup.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
