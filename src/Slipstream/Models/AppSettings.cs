@@ -16,10 +16,14 @@ public class AppSettings
 
     // HUD settings
     public HudPosition HudPosition { get; set; } = HudPosition.BottomRight;
-    public int HudOffsetX { get; set; } = 20;
-    public int HudOffsetY { get; set; } = 20;
     public float HudOpacity { get; set; } = 0.9f;
     public bool HudClickThrough { get; set; } = false;
+
+    // Window positions (null = use default positioning)
+    public double? HudWindowX { get; set; } = null;
+    public double? HudWindowY { get; set; } = null;
+    public double? SettingsWindowX { get; set; } = null;
+    public double? SettingsWindowY { get; set; } = null;
 
     // Hotkey bindings: action name -> binding
     public Dictionary<string, HotkeyBinding> HotkeyBindings { get; set; } = new()

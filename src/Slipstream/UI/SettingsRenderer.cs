@@ -43,6 +43,7 @@ public class SettingsRenderer
 
     public event Action? CloseRequested;
     public event Action<AppSettings>? SettingsChanged;
+    public event Action? ClearAllSlotsRequested;
 
     public SettingsRenderer(AppSettings settings)
     {
@@ -186,20 +187,8 @@ public class SettingsRenderer
                 CloseRequested?.Invoke();
                 break;
 
-            case "slotMinus":
-                if (_settings.SlotCount > 1)
-                {
-                    _settings.SlotCount--;
-                    SettingsChanged?.Invoke(_settings);
-                }
-                break;
-
-            case "slotPlus":
-                if (_settings.SlotCount < 20)
-                {
-                    _settings.SlotCount++;
-                    SettingsChanged?.Invoke(_settings);
-                }
+            case "clearAllSlots":
+                ClearAllSlotsRequested?.Invoke();
                 break;
 
             case "startWithWindows":
@@ -264,9 +253,9 @@ public class SettingsRenderer
         float y = TitleBarHeight + Padding;
         float contentWidth = size.Width - Padding * 2;
 
-        // Section: General
-        y = DrawSection(canvas, "General", y, contentWidth);
-        y = DrawSlotCountSetting(canvas, y, contentWidth);
+        // Section: Data
+        y = DrawSection(canvas, "Data", y, contentWidth);
+        y = DrawClearAllSlotsButton(canvas, y, contentWidth);
         y += SectionSpacing;
 
         // Section: Slot Behavior
@@ -369,52 +358,34 @@ public class SettingsRenderer
         return y + sectionPaint.TextSize + ItemSpacing + 8;
     }
 
-    private float DrawSlotCountSetting(SKCanvas canvas, float y, float width)
+    private float DrawClearAllSlotsButton(SKCanvas canvas, float y, float width)
     {
-        canvas.DrawText("Number of slots", Padding, y + _textPaint.TextSize, _textPaint);
-
-        float btnSize = 28f;
+        float btnHeight = 32f;
+        float btnWidth = 120f;
         float rightX = Padding + width;
-        float valueWidth = 40f;
 
-        var minusRect = new SKRect(rightX - btnSize - valueWidth - btnSize, y, rightX - valueWidth - btnSize, y + btnSize);
-        var plusRect = new SKRect(rightX - btnSize, y, rightX, y + btnSize);
+        var btnRect = new SKRect(rightX - btnWidth, y, rightX, y + btnHeight);
 
-        // Draw minus button
-        var minusBtnColor = _hoveredButton == "slotMinus" ? ButtonHoverColor : ButtonColor;
-        using var minusPaint = new SKPaint { Color = minusBtnColor, IsAntialias = true };
-        canvas.DrawRoundRect(new SKRoundRect(minusRect, 4), minusPaint);
+        // Draw button
+        var btnColor = _hoveredButton == "clearAllSlots" ? new SKColor(180, 60, 60) : new SKColor(140, 50, 50);
+        using var btnPaint = new SKPaint { Color = btnColor, IsAntialias = true };
+        canvas.DrawRoundRect(new SKRoundRect(btnRect, 4), btnPaint);
 
-        using var minusTextPaint = new SKPaint
+        using var btnTextPaint = new SKPaint
         {
             Color = TextColor,
             IsAntialias = true,
-            TextSize = 16f,
+            TextSize = 13f,
             TextAlign = SKTextAlign.Center,
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
         };
-        canvas.DrawText("-", minusRect.MidX, minusRect.MidY + 6, minusTextPaint);
-        _buttons.Add(new ButtonRect("slotMinus", minusRect));
+        canvas.DrawText("Clear All Slots", btnRect.MidX, btnRect.MidY + 5, btnTextPaint);
+        _buttons.Add(new ButtonRect("clearAllSlots", btnRect));
 
-        // Draw value
-        using var valuePaint = new SKPaint
-        {
-            Color = TextColor,
-            IsAntialias = true,
-            TextSize = 14f,
-            TextAlign = SKTextAlign.Center,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
-        };
-        canvas.DrawText(_settings.SlotCount.ToString(), (minusRect.Right + plusRect.Left) / 2, y + btnSize / 2 + 5, valuePaint);
+        // Description text
+        canvas.DrawText("Remove all clipboard data from slots", Padding, y + _textPaint.TextSize, _textPaint);
 
-        // Draw plus button
-        var plusBtnColor = _hoveredButton == "slotPlus" ? ButtonHoverColor : ButtonColor;
-        using var plusPaint = new SKPaint { Color = plusBtnColor, IsAntialias = true };
-        canvas.DrawRoundRect(new SKRoundRect(plusRect, 4), plusPaint);
-        canvas.DrawText("+", plusRect.MidX, plusRect.MidY + 6, minusTextPaint);
-        _buttons.Add(new ButtonRect("slotPlus", plusRect));
-
-        return y + btnSize + ItemSpacing;
+        return y + btnHeight + ItemSpacing;
     }
 
     private float DrawToggleSetting(SKCanvas canvas, string label, bool value, float y, float width, string id)

@@ -27,16 +27,24 @@ jobs:
       - name: Test
         run: dotnet test --verbosity normal
 
+      - name: Build
+        if: github.event_name == 'pull_request'
+        run: dotnet build src/Slipstream/Slipstream.csproj -c Release
+
       - name: Publish Standalone
+        if: github.event_name == 'push'
         run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:Version=${{ env.VERSION }} -o publish/standalone
 
       - name: Publish Installer Build
+        if: github.event_name == 'push'
         run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained -p:Version=${{ env.VERSION }} -o publish/installer-build
 
       - name: Install NSIS
+        if: github.event_name == 'push'
         run: choco install nsis -y
 
       - name: Create Installer
+        if: github.event_name == 'push'
         run: |
           $installerScript = @"
           !include "MUI2.nsh"
@@ -130,24 +138,28 @@ jobs:
         shell: pwsh
 
       - name: Build NSIS Installer
+        if: github.event_name == 'push'
         uses: joncloud/makensis-action@v4
         with:
           script-file: publish/installer.nsi
           arguments: "/V3"
 
       - name: Prepare Release Assets
+        if: github.event_name == 'push'
         run: |
           mv publish/standalone/Slipstream.exe publish/Slipstream-${{ env.VERSION }}-Portable.exe
           mv publish/Slipstream-${{ env.VERSION }}-Setup.exe publish/
         shell: bash
 
       - name: Upload Portable
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: Slipstream-Portable
           path: publish/Slipstream-${{ env.VERSION }}-Portable.exe
 
       - name: Upload Installer
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: Slipstream-Installer

@@ -15,6 +15,7 @@ public partial class SettingsWindow : Window
     private readonly HotkeyManager _hotkeyManager;
     private readonly SettingsRenderer _renderer;
     private readonly Action<AppSettings>? _onSettingsChanged;
+    private AppSettings _settings;
 
     private SKPoint _lastMousePosition;
     private string? _lastHoveredButton;
@@ -27,20 +28,57 @@ public partial class SettingsWindow : Window
         _slotManager = slotManager;
         _hotkeyManager = hotkeyManager;
         _onSettingsChanged = onSettingsChanged;
-        _renderer = new SettingsRenderer(configService.LoadSettings());
+        _settings = configService.LoadSettings();
+        _renderer = new SettingsRenderer(_settings);
 
         _renderer.CloseRequested += () => Close();
         _renderer.SettingsChanged += OnSettingsChanged;
+        _renderer.ClearAllSlotsRequested += OnClearAllSlotsRequested;
+
+        // Save position when window is moved
+        LocationChanged += OnLocationChanged;
+
+        // Restore position
+        Loaded += OnLoaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        // Restore saved position if available
+        if (_settings.SettingsWindowX.HasValue && _settings.SettingsWindowY.HasValue)
+        {
+            Left = _settings.SettingsWindowX.Value;
+            Top = _settings.SettingsWindowY.Value;
+
+            // Ensure window is still on screen
+            var workArea = SystemParameters.WorkArea;
+            if (Left < workArea.Left) Left = workArea.Left;
+            if (Top < workArea.Top) Top = workArea.Top;
+            if (Left + Width > workArea.Right) Left = workArea.Right - Width;
+            if (Top + Height > workArea.Bottom) Top = workArea.Bottom - Height;
+        }
+    }
+
+    private void OnLocationChanged(object? sender, EventArgs e)
+    {
+        // Save position to settings
+        _settings.SettingsWindowX = Left;
+        _settings.SettingsWindowY = Top;
+        _configService.SaveSettings(_settings);
     }
 
     private void OnSettingsChanged(AppSettings settings)
     {
         _configService.SaveSettings(settings);
-        _slotManager.SetSlotCount(settings.SlotCount);
         _slotManager.SetSlotBehavior(settings.SlotBehavior);
 
         // Notify App about settings changes
         _onSettingsChanged?.Invoke(settings);
+    }
+
+    private void OnClearAllSlotsRequested()
+    {
+        _slotManager.ClearAllSlots();
     }
 
     private void SkiaCanvas_PaintSurface(object sender, SKPaintSurfaceEventArgs e)

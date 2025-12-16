@@ -4,6 +4,7 @@ using System.Windows.Interop;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using SkiaSharp.Views.WPF;
+using Slipstream.Models;
 using Slipstream.Native;
 using Slipstream.Services;
 
@@ -13,15 +14,22 @@ public partial class HudWindow : Window
 {
     private readonly SlotManager _slotManager;
     private readonly HudRenderer _renderer;
+    private readonly ConfigService _configService;
+    private readonly AppSettings _settings;
 
-    public HudWindow(SlotManager slotManager)
+    public HudWindow(SlotManager slotManager, ConfigService configService, AppSettings settings)
     {
         InitializeComponent();
         _slotManager = slotManager;
+        _configService = configService;
+        _settings = settings;
         _renderer = new HudRenderer();
 
         // Subscribe to slot changes
         _slotManager.SlotChanged += (_, _) => Refresh();
+
+        // Save position when window is moved
+        LocationChanged += OnLocationChanged;
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -69,9 +77,34 @@ public partial class HudWindow : Window
 
     private void PositionWindow()
     {
-        var workArea = SystemParameters.WorkArea;
-        Left = workArea.Right - Width - 20;
-        Top = workArea.Bottom - Height - 20;
+        // Restore saved position if available
+        if (_settings.HudWindowX.HasValue && _settings.HudWindowY.HasValue)
+        {
+            Left = _settings.HudWindowX.Value;
+            Top = _settings.HudWindowY.Value;
+
+            // Ensure window is still on screen
+            var workArea = SystemParameters.WorkArea;
+            if (Left < workArea.Left) Left = workArea.Left;
+            if (Top < workArea.Top) Top = workArea.Top;
+            if (Left + Width > workArea.Right) Left = workArea.Right - Width;
+            if (Top + Height > workArea.Bottom) Top = workArea.Bottom - Height;
+        }
+        else
+        {
+            // Default to bottom-right
+            var workArea = SystemParameters.WorkArea;
+            Left = workArea.Right - Width - 20;
+            Top = workArea.Bottom - Height - 20;
+        }
+    }
+
+    private void OnLocationChanged(object? sender, EventArgs e)
+    {
+        // Save position to settings
+        _settings.HudWindowX = Left;
+        _settings.HudWindowY = Top;
+        _configService.SaveSettings(_settings);
     }
 
     public void Refresh()
