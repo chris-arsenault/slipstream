@@ -41,13 +41,29 @@ public class ConfigService
 
     public AppSettings LoadSettings()
     {
+        var defaults = new AppSettings();
+
         try
         {
             if (File.Exists(SettingsPath))
             {
                 var json = File.ReadAllText(SettingsPath);
                 var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
-                return settings ?? new AppSettings();
+
+                if (settings != null)
+                {
+                    // Merge hotkey bindings - add any missing default bindings
+                    // This ensures new hotkeys added in updates are available
+                    foreach (var defaultBinding in defaults.HotkeyBindings)
+                    {
+                        if (!settings.HotkeyBindings.ContainsKey(defaultBinding.Key))
+                        {
+                            settings.HotkeyBindings[defaultBinding.Key] = defaultBinding.Value;
+                        }
+                    }
+
+                    return settings;
+                }
             }
         }
         catch (Exception ex)
@@ -55,7 +71,7 @@ public class ConfigService
             System.Diagnostics.Debug.WriteLine($"Error loading settings: {ex.Message}");
         }
 
-        return new AppSettings();
+        return defaults;
     }
 
     public void SaveSettings(AppSettings settings)

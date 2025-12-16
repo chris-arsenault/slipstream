@@ -8,6 +8,7 @@ public interface IKeyboardSimulator
     void KeyDown(byte virtualKey);
     void KeyUp(byte virtualKey);
     void Sleep(int milliseconds);
+    bool IsKeyPhysicallyDown(byte virtualKey);
 }
 
 /// <summary>

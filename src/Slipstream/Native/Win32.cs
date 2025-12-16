@@ -100,6 +100,24 @@ internal static class Win32
 
     #endregion
 
+    #region Keyboard State
+
+    /// <summary>
+    /// Gets the state of a key. If the high-order bit is 1, the key is down.
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
+
+    /// <summary>
+    /// Returns true if the key is currently physically held down.
+    /// </summary>
+    public static bool IsKeyPhysicallyDown(int vKey)
+    {
+        return (GetAsyncKeyState(vKey) & 0x8000) != 0;
+    }
+
+    #endregion
+
     #region Window Management
 
     public const int GWL_EXSTYLE = -20;

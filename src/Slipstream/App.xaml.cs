@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 using Slipstream.Models;
 using Slipstream.Services;
 using Slipstream.UI;
@@ -17,6 +18,7 @@ public partial class App : Application
     private HotkeyManager? _hotkeyManager;
     private PasteEngine? _pasteEngine;
     private KeyboardSequencer? _keyboardSequencer;
+    private DispatcherTimer? _modifierCleanupTimer;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -65,6 +67,21 @@ public partial class App : Application
 
         // Start clipboard monitoring (always on)
         _clipboardMonitor.Start();
+
+        // Start periodic modifier cleanup timer to fix stuck keys
+        _modifierCleanupTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _modifierCleanupTimer.Tick += OnModifierCleanupTick;
+        _modifierCleanupTimer.Start();
+    }
+
+    private void OnModifierCleanupTick(object? sender, EventArgs e)
+    {
+        // Periodically release any modifier keys that aren't physically held
+        // This catches race conditions where modifiers get stuck
+        _keyboardSequencer?.CleanupStuckModifiers();
     }
 
     private void RegisterDefaultHotkeys(AppSettings settings)
@@ -199,6 +216,12 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // Stop cleanup timer
+        _modifierCleanupTimer?.Stop();
+
+        // Release any stuck modifier keys before shutting down
+        _keyboardSequencer?.ReleaseAllModifiers();
+
         // Clean shutdown
         _hotkeyManager?.Dispose();
         _clipboardMonitor?.Dispose();
