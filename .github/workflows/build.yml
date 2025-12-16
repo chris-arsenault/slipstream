@@ -2,9 +2,10 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: ['*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   VERSION: "0.8.0"
