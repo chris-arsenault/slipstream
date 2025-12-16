@@ -40,10 +40,25 @@ jobs:
         run: |
           $installerScript = @"
           !include "MUI2.nsh"
-          Name "Slipstream"
+
+          !define PRODUCT_NAME "Slipstream"
+          !define PUBLISHER "Tsonu"
+          !define COMPANY "Ahara"
+          !define WEBSITE "https://github.com/chris-arsenault/slipstream"
+
+          Name "`${PRODUCT_NAME}"
           OutFile "Slipstream-${{ env.VERSION }}-Setup.exe"
           InstallDir "`$LOCALAPPDATA\Slipstream"
           RequestExecutionLevel user
+
+          VIProductVersion "${{ env.VERSION }}.0"
+          VIAddVersionKey "ProductName" "`${PRODUCT_NAME}"
+          VIAddVersionKey "CompanyName" "`${COMPANY}"
+          VIAddVersionKey "Publisher" "`${PUBLISHER}"
+          VIAddVersionKey "FileDescription" "Slipstream Clipboard Manager"
+          VIAddVersionKey "FileVersion" "${{ env.VERSION }}"
+          VIAddVersionKey "LegalCopyright" "© 2025 `${PUBLISHER}"
+          VIAddVersionKey "ProductVersion" "${{ env.VERSION }}"
 
           !insertmacro MUI_PAGE_DIRECTORY
           !insertmacro MUI_PAGE_INSTFILES
