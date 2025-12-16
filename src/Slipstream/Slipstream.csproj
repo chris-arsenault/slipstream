@@ -15,6 +15,7 @@
     <Copyright>Copyright © 2025 Tsonu</Copyright>
     <PackageProjectUrl>https://github.com/chris-arsenault/slipstream</PackageProjectUrl>
     <RepositoryUrl>https://github.com/chris-arsenault/slipstream</RepositoryUrl>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

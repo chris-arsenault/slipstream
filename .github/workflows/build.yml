@@ -46,6 +46,9 @@ jobs:
           !define COMPANY "Ahara"
           !define WEBSITE "https://github.com/chris-arsenault/slipstream"
 
+          !define MUI_ICON "installer-build\Resources\app.ico"
+          !define MUI_UNICON "installer-build\Resources\app.ico"
+
           Name "`${PRODUCT_NAME}"
           OutFile "Slipstream-${{ env.VERSION }}-Setup.exe"
           InstallDir "`$LOCALAPPDATA\Slipstream"

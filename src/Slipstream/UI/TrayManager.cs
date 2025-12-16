@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using Hardcodet.Wpf.TaskbarNotification;
@@ -96,7 +97,17 @@ public class TrayManager : IDisposable
 
     private static Icon CreateDefaultIcon()
     {
-        // Create a simple programmatic icon (blue square with S)
+        // Try to load icon from Resources folder
+        var exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+        var exeDir = Path.GetDirectoryName(exePath) ?? ".";
+        var iconPath = Path.Combine(exeDir, "Resources", "app.ico");
+
+        if (File.Exists(iconPath))
+        {
+            return new Icon(iconPath);
+        }
+
+        // Fallback: create a simple programmatic icon (blue square with S)
         using var bitmap = new Bitmap(16, 16);
         using var g = Graphics.FromImage(bitmap);
 

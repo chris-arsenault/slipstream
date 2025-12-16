@@ -1,6 +1,12 @@
+<p align="center">
+  <img src="docs/logo.png" alt="Slipstream" width="128">
+</p>
+
 # Slipstream
 
 A lightweight, high-performance clipboard manager for Windows that gives you superpowers without getting in your way.
+
+**👉 [Download Slipstream](https://github.com/chris-arsenault/slipstream/releases/latest)** — grab the installer or portable exe and start using it in seconds.
 
 ## Why Slipstream?
 
@@ -63,18 +69,19 @@ Slipstream preserves formatting when pasting rich content.
 
 ## Installation
 
-1. Download the latest release
-2. Run `Slipstream.exe`
-3. Look for the **S** icon in your system tray
+**[Download Latest Release](https://github.com/chris-arsenault/slipstream/releases/latest)**
 
-Slipstream runs in the background with minimal resource usage. Right-click the tray icon for settings or to quit.
+- **Portable** - Single .exe, no installation required. Just run it.
+- **Installer** - Sets up Start Menu and Desktop shortcuts.
+
+After running, look for the **S** icon in your system tray. Right-click for settings or to quit.
 
 ## Building from Source
 
 Requires .NET 8 SDK.
 
 ```bash
-git clone https://github.com/yourusername/slipstream.git
+git clone https://github.com/chris-arsenault/slipstream.git
 cd slipstream
 dotnet build
 dotnet run --project src/Slipstream/Slipstream.csproj
