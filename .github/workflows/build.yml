@@ -153,14 +153,14 @@ jobs:
         shell: bash
 
       - name: Upload Portable
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: Slipstream-Portable
           path: publish/Slipstream-${{ env.VERSION }}-Portable.exe
 
       - name: Upload Installer
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: Slipstream-Installer
