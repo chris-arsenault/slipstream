@@ -102,19 +102,16 @@ public class KeyboardSequencerTests
     }
 
     [Fact]
-    public void SendCopyWithModifierRelease_RepressesCtrlAltAtEnd_WhenPhysicallyHeld()
+    public void SendCopyWithModifierRelease_AlwaysRepressesCtrlAltAtEnd()
     {
         // Arrange
         var mock = new MockKeyboardSimulator();
-        // Simulate user physically holding Ctrl+Alt (left variants)
-        mock.PhysicallyHeldKeys.Add(VK_LCONTROL);
-        mock.PhysicallyHeldKeys.Add(VK_LMENU);
         var sequencer = new KeyboardSequencer(mock);
 
         // Act
         sequencer.SendCopyWithModifierRelease();
 
-        // Assert - Last two KeyDown events should be Ctrl and Alt
+        // Assert - Last two KeyDown events should be Ctrl and Alt (the copy hotkey modifiers)
         var lastTwoKeyDowns = mock.Events
             .Where(e => e.Action == "KeyDown")
             .TakeLast(2)
@@ -123,45 +120,6 @@ public class KeyboardSequencerTests
 
         Assert.Contains(VK_CONTROL, lastTwoKeyDowns);
         Assert.Contains(VK_MENU, lastTwoKeyDowns);
-    }
-
-    [Fact]
-    public void SendCopyWithModifierRelease_DoesNotRepressModifiers_WhenNotPhysicallyHeld()
-    {
-        // Arrange
-        var mock = new MockKeyboardSimulator();
-        // No keys physically held
-        var sequencer = new KeyboardSequencer(mock);
-
-        // Act
-        sequencer.SendCopyWithModifierRelease();
-
-        // Assert - After the Ctrl+C sequence (Ctrl down, C down, C up, Ctrl up),
-        // there should be no more KeyDown events
-        var events = mock.Events;
-        int ctrlUpAfterC = -1;
-        for (int i = 0; i < events.Count; i++)
-        {
-            if (events[i] == ("KeyUp", VK_C))
-            {
-                // Find Ctrl up after C up
-                for (int j = i + 1; j < events.Count; j++)
-                {
-                    if (events[j] == ("KeyUp", VK_CONTROL))
-                    {
-                        ctrlUpAfterC = j;
-                        break;
-                    }
-                }
-                break;
-            }
-        }
-
-        Assert.True(ctrlUpAfterC >= 0, "Ctrl up after C not found");
-
-        // No KeyDown events after the Ctrl up that ends Ctrl+C
-        var keyDownsAfterCtrlC = events.Skip(ctrlUpAfterC + 1).Where(e => e.Action == "KeyDown").ToList();
-        Assert.Empty(keyDownsAfterCtrlC);
     }
 
     [Fact]
@@ -218,19 +176,16 @@ public class KeyboardSequencerTests
     }
 
     [Fact]
-    public void SendPasteWithModifierRelease_RepressesCtrlShiftAtEnd_WhenPhysicallyHeld()
+    public void SendPasteWithModifierRelease_AlwaysRepressesCtrlShiftAtEnd()
     {
         // Arrange
         var mock = new MockKeyboardSimulator();
-        // Simulate user physically holding Ctrl+Shift (left variants)
-        mock.PhysicallyHeldKeys.Add(VK_LCONTROL);
-        mock.PhysicallyHeldKeys.Add(VK_LSHIFT);
         var sequencer = new KeyboardSequencer(mock);
 
         // Act
         sequencer.SendPasteWithModifierRelease();
 
-        // Assert - Last two KeyDown events should be Ctrl and Shift
+        // Assert - Last two KeyDown events should be Ctrl and Shift (the paste hotkey modifiers)
         var lastTwoKeyDowns = mock.Events
             .Where(e => e.Action == "KeyDown")
             .TakeLast(2)
@@ -242,45 +197,7 @@ public class KeyboardSequencerTests
     }
 
     [Fact]
-    public void SendPasteWithModifierRelease_DoesNotRepressModifiers_WhenNotPhysicallyHeld()
-    {
-        // Arrange
-        var mock = new MockKeyboardSimulator();
-        // No keys physically held
-        var sequencer = new KeyboardSequencer(mock);
-
-        // Act
-        sequencer.SendPasteWithModifierRelease();
-
-        // Assert - After the Ctrl+V sequence, there should be no more KeyDown events
-        var events = mock.Events;
-        int ctrlUpAfterV = -1;
-        for (int i = 0; i < events.Count; i++)
-        {
-            if (events[i] == ("KeyUp", VK_V))
-            {
-                // Find Ctrl up after V up
-                for (int j = i + 1; j < events.Count; j++)
-                {
-                    if (events[j] == ("KeyUp", VK_CONTROL))
-                    {
-                        ctrlUpAfterV = j;
-                        break;
-                    }
-                }
-                break;
-            }
-        }
-
-        Assert.True(ctrlUpAfterV >= 0, "Ctrl up after V not found");
-
-        // No KeyDown events after the Ctrl up that ends Ctrl+V
-        var keyDownsAfterCtrlV = events.Skip(ctrlUpAfterV + 1).Where(e => e.Action == "KeyDown").ToList();
-        Assert.Empty(keyDownsAfterCtrlV);
-    }
-
-    [Fact]
-    public void SendCopyWithModifierRelease_IncludesDelaysBetweenPhases()
+    public void SendCopyWithModifierRelease_IncludesDelayAfterModifierRelease()
     {
         // Arrange
         var mock = new MockKeyboardSimulator();
@@ -289,13 +206,13 @@ public class KeyboardSequencerTests
         // Act
         sequencer.SendCopyWithModifierRelease();
 
-        // Assert - Should have Sleep calls between phases
+        // Assert - Should have at least one Sleep call (after releasing modifiers)
         var sleepCount = mock.Events.Count(e => e.Action == "Sleep");
-        Assert.True(sleepCount >= 2, $"Expected at least 2 sleep calls, got {sleepCount}");
+        Assert.True(sleepCount >= 1, $"Expected at least 1 sleep call, got {sleepCount}");
     }
 
     [Fact]
-    public void SendPasteWithModifierRelease_IncludesDelaysBetweenPhases()
+    public void SendPasteWithModifierRelease_IncludesDelayAfterModifierRelease()
     {
         // Arrange
         var mock = new MockKeyboardSimulator();
@@ -304,9 +221,9 @@ public class KeyboardSequencerTests
         // Act
         sequencer.SendPasteWithModifierRelease();
 
-        // Assert - Should have Sleep calls between phases
+        // Assert - Should have at least one Sleep call (after releasing modifiers)
         var sleepCount = mock.Events.Count(e => e.Action == "Sleep");
-        Assert.True(sleepCount >= 2, $"Expected at least 2 sleep calls, got {sleepCount}");
+        Assert.True(sleepCount >= 1, $"Expected at least 1 sleep call, got {sleepCount}");
     }
 
     [Fact]
@@ -345,5 +262,101 @@ public class KeyboardSequencerTests
 
         Assert.True(shiftUpIndex < ctrlVDownIndex,
             "Shift should be released before sending V keystroke");
+    }
+
+    [Fact]
+    public void ChainedPaste_ModifiersRestoredAfterEachPaste()
+    {
+        // Arrange - Simulate chained paste (e.g., Ctrl+Shift+1 then Ctrl+Shift+2)
+        var mock = new MockKeyboardSimulator();
+        var sequencer = new KeyboardSequencer(mock);
+
+        // Act - Simulate two consecutive paste operations
+        sequencer.SendPasteWithModifierRelease();
+
+        // Clear events for second paste
+        var firstPasteEvents = mock.Events.ToList();
+        mock.Events.Clear();
+
+        sequencer.SendPasteWithModifierRelease();
+        var secondPasteEvents = mock.Events.ToList();
+
+        // Assert - First paste should end with Ctrl and Shift being repressed
+        var firstPasteLastKeyDowns = firstPasteEvents
+            .Where(e => e.Action == "KeyDown")
+            .TakeLast(2)
+            .Select(e => e.Key)
+            .ToList();
+        Assert.Contains(VK_CONTROL, firstPasteLastKeyDowns);
+        Assert.Contains(VK_SHIFT, firstPasteLastKeyDowns);
+
+        // Assert - Second paste should also end with Ctrl and Shift being repressed
+        var secondPasteLastKeyDowns = secondPasteEvents
+            .Where(e => e.Action == "KeyDown")
+            .TakeLast(2)
+            .Select(e => e.Key)
+            .ToList();
+        Assert.Contains(VK_CONTROL, secondPasteLastKeyDowns);
+        Assert.Contains(VK_SHIFT, secondPasteLastKeyDowns);
+    }
+
+    [Fact]
+    public void SendPasteWithModifierRelease_EndsWithModifiersRestored()
+    {
+        // Arrange
+        var mock = new MockKeyboardSimulator();
+        var sequencer = new KeyboardSequencer(mock);
+
+        // Act
+        sequencer.SendPasteWithModifierRelease();
+
+        // Assert - The very last events should be KeyDown for Ctrl and Shift
+        // This ensures modifiers are restored AFTER the paste completes
+        var events = mock.Events;
+        var lastKeyDownCtrlIndex = events.FindLastIndex(e => e == ("KeyDown", VK_CONTROL));
+        var lastKeyDownShiftIndex = events.FindLastIndex(e => e == ("KeyDown", VK_SHIFT));
+        var lastKeyUpCtrlIndex = events.FindLastIndex(e => e == ("KeyUp", VK_CONTROL));
+
+        // The Ctrl KeyDown that restores the modifier should come AFTER the Ctrl KeyUp that ends Ctrl+V
+        Assert.True(lastKeyDownCtrlIndex > lastKeyUpCtrlIndex,
+            "Ctrl should be repressed after Ctrl+V completes");
+        Assert.True(lastKeyDownShiftIndex > lastKeyUpCtrlIndex,
+            "Shift should be repressed after Ctrl+V completes");
+    }
+
+    [Fact]
+    public void ChainedCopy_ModifiersRestoredAfterEachCopy()
+    {
+        // Arrange - Simulate chained copy (e.g., Ctrl+Alt+1 then Ctrl+Alt+2)
+        var mock = new MockKeyboardSimulator();
+        var sequencer = new KeyboardSequencer(mock);
+
+        // Act - Simulate two consecutive copy operations
+        sequencer.SendCopyWithModifierRelease();
+
+        // Clear events for second copy
+        var firstCopyEvents = mock.Events.ToList();
+        mock.Events.Clear();
+
+        sequencer.SendCopyWithModifierRelease();
+        var secondCopyEvents = mock.Events.ToList();
+
+        // Assert - First copy should end with Ctrl and Alt being repressed
+        var firstCopyLastKeyDowns = firstCopyEvents
+            .Where(e => e.Action == "KeyDown")
+            .TakeLast(2)
+            .Select(e => e.Key)
+            .ToList();
+        Assert.Contains(VK_CONTROL, firstCopyLastKeyDowns);
+        Assert.Contains(VK_MENU, firstCopyLastKeyDowns);
+
+        // Assert - Second copy should also end with Ctrl and Alt being repressed
+        var secondCopyLastKeyDowns = secondCopyEvents
+            .Where(e => e.Action == "KeyDown")
+            .TakeLast(2)
+            .Select(e => e.Key)
+            .ToList();
+        Assert.Contains(VK_CONTROL, secondCopyLastKeyDowns);
+        Assert.Contains(VK_MENU, secondCopyLastKeyDowns);
     }
 }

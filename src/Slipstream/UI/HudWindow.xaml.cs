@@ -163,6 +163,15 @@ public partial class HudWindow : Window
             return;
         }
 
+        // Check if click is on a slot (to set it as active)
+        int clickedSlotIndex = _renderer.HitTestSlot(skX, skY);
+        if (clickedSlotIndex >= 0)
+        {
+            _slotManager.SetActiveSlot(clickedSlotIndex);
+            e.Handled = true;
+            return;
+        }
+
         // Otherwise, allow window drag
         DragMove();
     }

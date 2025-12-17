@@ -80,12 +80,20 @@ public class HotkeyManager : IDisposable
         if (msg == Win32.WM_HOTKEY)
         {
             int hotkeyId = wParam.ToInt32();
-            Console.WriteLine($"[Hotkey] WM_HOTKEY received, id={hotkeyId}");
+            uint modifiers = (uint)(lParam.ToInt32() & 0xFFFF);
+            uint vk = (uint)(lParam.ToInt32() >> 16);
+            Console.WriteLine($"[Hotkey] WM_HOTKEY received, id={hotkeyId}, mods=0x{modifiers:X}, vk=0x{vk:X}");
             if (_registeredHotkeys.TryGetValue(hotkeyId, out var registration))
             {
-                Console.WriteLine($"[Hotkey] Pressed: {registration.ActionName} (action={registration.Action}, slot={registration.SlotIndex})");
-                HotkeyPressed?.Invoke(this, new HotkeyEventArgs(registration.Action, registration.SlotIndex));
+                bool hasShift = (modifiers & Win32.MOD_SHIFT) != 0;
+                bool hasAlt = (modifiers & Win32.MOD_ALT) != 0;
+                Console.WriteLine($"[Hotkey] Pressed: {registration.ActionName} (action={registration.Action}, slot={registration.SlotIndex}, shift={hasShift}, alt={hasAlt})");
+                HotkeyPressed?.Invoke(this, new HotkeyEventArgs(registration.Action, registration.SlotIndex, hasShift, hasAlt));
                 handled = true;
+            }
+            else
+            {
+                Console.WriteLine($"[Hotkey] WARNING: No registration found for id={hotkeyId}");
             }
         }
 
@@ -179,11 +187,15 @@ public class HotkeyEventArgs : EventArgs
 {
     public HotkeyAction Action { get; }
     public int SlotIndex { get; }
+    public bool HasShift { get; }
+    public bool HasAlt { get; }
 
-    public HotkeyEventArgs(HotkeyAction action, int slotIndex = -1)
+    public HotkeyEventArgs(HotkeyAction action, int slotIndex = -1, bool hasShift = false, bool hasAlt = false)
     {
         Action = action;
         SlotIndex = slotIndex;
+        HasShift = hasShift;
+        HasAlt = hasAlt;
     }
 }
 

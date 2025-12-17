@@ -193,4 +193,14 @@ public class ConfigService
             }
         }
     }
+
+    /// <summary>
+    /// Resets hotkey bindings to defaults by replacing the saved hotkeys with new defaults.
+    /// </summary>
+    public void ResetHotkeysToDefaults(AppSettings settings)
+    {
+        var defaults = new AppSettings();
+        settings.HotkeyBindings = new Dictionary<string, HotkeyBinding>(defaults.HotkeyBindings);
+        SaveSettings(settings);
+    }
 }

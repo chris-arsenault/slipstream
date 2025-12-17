@@ -34,6 +34,7 @@ public partial class SettingsWindow : Window
         _renderer.CloseRequested += () => Close();
         _renderer.SettingsChanged += OnSettingsChanged;
         _renderer.ClearAllSlotsRequested += OnClearAllSlotsRequested;
+        _renderer.ResetHotkeysRequested += OnResetHotkeysRequested;
 
         // Save position when window is moved
         LocationChanged += OnLocationChanged;
@@ -79,6 +80,25 @@ public partial class SettingsWindow : Window
     private void OnClearAllSlotsRequested()
     {
         _slotManager.ClearAllSlots();
+    }
+
+    private void OnResetHotkeysRequested()
+    {
+        // Reset hotkeys in config
+        _configService.ResetHotkeysToDefaults(_settings);
+
+        // Re-register all hotkeys with the new defaults
+        _hotkeyManager.UnregisterAll();
+        foreach (var binding in _settings.HotkeyBindings)
+        {
+            _hotkeyManager.Register(binding.Key, binding.Value.Modifiers, binding.Value.Key);
+        }
+
+        // Notify about the change
+        _onSettingsChanged?.Invoke(_settings);
+
+        // Force redraw
+        SkiaCanvas.InvalidateVisual();
     }
 
     private void SkiaCanvas_PaintSurface(object sender, SKPaintSurfaceEventArgs e)

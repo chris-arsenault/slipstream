@@ -59,14 +59,14 @@ public class KeyboardSequencer
     /// <summary>
     /// Sends Ctrl+C to copy selection.
     /// Releases Ctrl+Alt modifiers first (user may be holding them from hotkey),
-    /// sends clean Ctrl+C, then re-presses only keys that are still physically held.
+    /// sends clean Ctrl+C, then re-presses Ctrl+Alt (the copy hotkey modifiers).
     /// </summary>
     public void SendCopyWithModifierRelease()
     {
         // Release any held modifiers first - both generic and left/right specific
         ReleaseAllModifiers();
 
-        _simulator.Sleep(10);
+        _simulator.Sleep(5);
 
         // Now send clean Ctrl+C
         _simulator.KeyDown(VK_CONTROL);
@@ -74,23 +74,26 @@ public class KeyboardSequencer
         _simulator.KeyUp(VK_C);
         _simulator.KeyUp(VK_CONTROL);
 
-        _simulator.Sleep(10);
-
-        // Re-press only modifiers that are still physically held down
-        RestorePhysicallyHeldModifiers();
+        // Re-press the modifiers that were used for the copy hotkey (Ctrl+Alt)
+        // We always do this because GetAsyncKeyState can't reliably detect physical state
+        // after we've sent synthetic key-up events
+        _simulator.KeyDown(VK_CONTROL);
+        _simulator.KeyDown(VK_MENU);
     }
 
     /// <summary>
     /// Sends Ctrl+V to paste.
-    /// Releases Ctrl+Shift modifiers first (user may be holding them from hotkey),
-    /// sends clean Ctrl+V, then re-presses only keys that are still physically held.
+    /// Releases modifiers first (user may be holding them from hotkey),
+    /// sends clean Ctrl+V, then re-presses the specified hotkey modifiers.
     /// </summary>
-    public void SendPasteWithModifierRelease()
+    /// <param name="hotkeyHasShift">Whether the hotkey that triggered this paste included Shift</param>
+    /// <param name="hotkeyHasAlt">Whether the hotkey that triggered this paste included Alt</param>
+    public void SendPasteWithModifierRelease(bool hotkeyHasShift = true, bool hotkeyHasAlt = false)
     {
         // Release any held modifiers first - both generic and left/right specific
         ReleaseAllModifiers();
 
-        _simulator.Sleep(10);
+        _simulator.Sleep(5);
 
         // Now send clean Ctrl+V
         _simulator.KeyDown(VK_CONTROL);
@@ -98,10 +101,14 @@ public class KeyboardSequencer
         _simulator.KeyUp(VK_V);
         _simulator.KeyUp(VK_CONTROL);
 
-        _simulator.Sleep(10);
-
-        // Re-press only modifiers that are still physically held down
-        RestorePhysicallyHeldModifiers();
+        // Re-press the modifiers that were used for the paste hotkey
+        // We always do this because GetAsyncKeyState can't reliably detect physical state
+        // after we've sent synthetic key-up events
+        _simulator.KeyDown(VK_CONTROL);
+        if (hotkeyHasShift)
+            _simulator.KeyDown(VK_SHIFT);
+        if (hotkeyHasAlt)
+            _simulator.KeyDown(VK_MENU);
     }
 
     /// <summary>

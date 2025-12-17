@@ -35,6 +35,7 @@ public class SettingsRenderer
     public event Action? CloseRequested;
     public event Action<AppSettings>? SettingsChanged;
     public event Action? ClearAllSlotsRequested;
+    public event Action? ResetHotkeysRequested;
 
     public SettingsRenderer(AppSettings settings)
     {
@@ -198,6 +199,10 @@ public class SettingsRenderer
                 ClearAllSlotsRequested?.Invoke();
                 break;
 
+            case "resetHotkeys":
+                ResetHotkeysRequested?.Invoke();
+                break;
+
             case "startWithWindows":
                 _settings.StartWithWindows = !_settings.StartWithWindows;
                 SettingsChanged?.Invoke(_settings);
@@ -316,6 +321,8 @@ public class SettingsRenderer
         // Hotkeys section
         rightY = DrawSectionHeader(canvas, "HOTKEYS", rightColumnX, rightY, columnWidth);
         rightY = DrawHotkeyInfoCompact(canvas, rightColumnX, rightY, columnWidth);
+        rightY += 4;
+        rightY = DrawCompactButton(canvas, "Reset to Defaults", rightColumnX, rightY, columnWidth, "resetHotkeys", false);
 
         // Border
         canvas.DrawRoundRect(bgRect, _borderPaint);

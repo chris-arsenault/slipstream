@@ -8,6 +8,10 @@ A lightweight, high-performance clipboard manager for Windows that gives you sup
 
 **👉 [Download Slipstream](https://github.com/chris-arsenault/slipstream/releases/latest)** — grab the installer or portable exe and start using it in seconds.
 
+<p align="center">
+  <img src="demo.gif" alt="Slipstream Demo" width="600">
+</p>
+
 ## Why Slipstream?
 
 Ever copy something, then copy something else, and realize you just lost that first thing forever? Or find yourself constantly switching between documents to copy-paste multiple items one at a time?
