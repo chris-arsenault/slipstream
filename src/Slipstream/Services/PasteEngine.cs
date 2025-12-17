@@ -27,9 +27,7 @@ public class PasteEngine
     /// Pastes content from a slot by setting clipboard and sending Ctrl+V.
     /// </summary>
     /// <param name="slot">The slot to paste from</param>
-    /// <param name="hotkeyHasShift">Whether the hotkey that triggered this paste included Shift</param>
-    /// <param name="hotkeyHasAlt">Whether the hotkey that triggered this paste included Alt</param>
-    public void PasteFromSlot(ClipboardSlot slot, bool hotkeyHasShift = true, bool hotkeyHasAlt = false)
+    public void PasteFromSlot(ClipboardSlot slot)
     {
         if (!slot.HasContent)
             return;
@@ -112,8 +110,8 @@ public class PasteEngine
         // Small delay for clipboard to be ready
         Thread.Sleep(20);
 
-        // Send Ctrl+V
-        _keyboardSequencer.SendPasteWithModifierRelease(hotkeyHasShift, hotkeyHasAlt);
+        // Send Ctrl+V (snapshots and restores modifier state automatically)
+        _keyboardSequencer.SendPasteWithModifierRelease();
 
         Console.WriteLine($"[PasteEngine] Paste complete");
     }

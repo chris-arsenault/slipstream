@@ -116,6 +116,20 @@ internal static class Win32
         return (GetAsyncKeyState(vKey) & 0x8000) != 0;
     }
 
+    /// <summary>
+    /// Copies the status of the 256 virtual keys to the specified buffer.
+    /// </summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetKeyboardState(byte[] lpKeyState);
+
+    /// <summary>
+    /// Copies a 256-byte array of keyboard key states into the calling thread's keyboard input-state table.
+    /// </summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetKeyboardState(byte[] lpKeyState);
+
     #endregion
 
     #region Window Management

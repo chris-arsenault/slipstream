@@ -91,6 +91,11 @@ public class AppSettings
         // Paste from active slot (Ctrl+Alt+V)
         ["PasteFromActiveSlot"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Alt, VirtualKey.V),
     };
+
+    /// <summary>
+    /// MIDI input settings
+    /// </summary>
+    public MidiSettings MidiSettings { get; set; } = new();
 }
 
 public enum SlotFillMode

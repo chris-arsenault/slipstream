@@ -189,14 +189,22 @@ public class HotkeyEventArgs : EventArgs
     public int SlotIndex { get; }
     public bool HasShift { get; }
     public bool HasAlt { get; }
+    public InputSource Source { get; }
 
-    public HotkeyEventArgs(HotkeyAction action, int slotIndex = -1, bool hasShift = false, bool hasAlt = false)
+    public HotkeyEventArgs(HotkeyAction action, int slotIndex = -1, bool hasShift = false, bool hasAlt = false, InputSource source = InputSource.Keyboard)
     {
         Action = action;
         SlotIndex = slotIndex;
         HasShift = hasShift;
         HasAlt = hasAlt;
+        Source = source;
     }
+}
+
+public enum InputSource
+{
+    Keyboard,
+    Midi
 }
 
 public enum HotkeyAction

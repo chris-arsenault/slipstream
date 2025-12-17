@@ -1,5 +1,6 @@
 using SkiaSharp;
 using Slipstream.Models;
+using Slipstream.Services;
 
 namespace Slipstream.UI;
 
@@ -7,6 +8,12 @@ public class SettingsRenderer
 {
     private AppSettings _settings;
     private ColorTheme _theme;
+    private readonly MidiPresets? _midiPresets;
+
+    // MIDI state (updated externally)
+    private IReadOnlyList<string> _midiDevices = Array.Empty<string>();
+    private string? _currentMidiDevice;
+    private bool _midiConnected;
 
     // Layout
     private const float TitleBarHeight = 40f;
@@ -31,15 +38,22 @@ public class SettingsRenderer
     private bool _closeButtonHovered;
     private string? _hoveredButton;
     private string? _pressedButton;
+    private bool _presetDropdownOpen;
+    private SKRect _presetDropdownAnchor; // Position of the dropdown button for overlay
 
     public event Action? CloseRequested;
     public event Action<AppSettings>? SettingsChanged;
     public event Action? ClearAllSlotsRequested;
     public event Action? ResetHotkeysRequested;
+    public event Action<string>? MidiDeviceSelected;
+    public event Action<string>? MidiPresetSelected;
+    public event Action? EditMidiPresetRequested;
+    public event Action? NewMidiPresetRequested;
 
-    public SettingsRenderer(AppSettings settings)
+    public SettingsRenderer(AppSettings settings, MidiPresets? midiPresets = null)
     {
         _settings = settings;
+        _midiPresets = midiPresets;
         _theme = ColorTheme.GetTheme(settings.ColorPalette);
 
         _backgroundPaint = new SKPaint
@@ -93,6 +107,13 @@ public class SettingsRenderer
     {
         _theme = ColorTheme.GetTheme(palette);
         UpdatePaintColors();
+    }
+
+    public void UpdateMidiState(IReadOnlyList<string> devices, string? currentDevice, bool connected)
+    {
+        _midiDevices = devices;
+        _currentMidiDevice = currentDevice;
+        _midiConnected = connected;
     }
 
     private void UpdatePaintColors()
@@ -255,6 +276,41 @@ public class SettingsRenderer
                 SetTheme(ColorPalette.Terminal);
                 SettingsChanged?.Invoke(_settings);
                 break;
+
+            case "midiEnabled":
+                _settings.MidiSettings.Enabled = !_settings.MidiSettings.Enabled;
+                SettingsChanged?.Invoke(_settings);
+                break;
+
+            case "presetDropdownToggle":
+                _presetDropdownOpen = !_presetDropdownOpen;
+                break;
+
+            case "editMidiPreset":
+                EditMidiPresetRequested?.Invoke();
+                break;
+
+            case "newMidiPreset":
+                NewMidiPresetRequested?.Invoke();
+                break;
+
+            default:
+                // Handle MIDI device selection
+                if (buttonId.StartsWith("midiDevice_"))
+                {
+                    var deviceName = buttonId.Substring("midiDevice_".Length);
+                    MidiDeviceSelected?.Invoke(deviceName);
+                }
+                // Handle MIDI preset selection
+                else if (buttonId.StartsWith("midiPreset_"))
+                {
+                    var presetName = buttonId.Substring("midiPreset_".Length);
+                    _settings.MidiSettings.ActivePreset = presetName;
+                    _presetDropdownOpen = false; // Close dropdown after selection
+                    MidiPresetSelected?.Invoke(presetName);
+                    SettingsChanged?.Invoke(_settings);
+                }
+                break;
         }
     }
 
@@ -306,6 +362,11 @@ public class SettingsRenderer
         leftY = DrawCompactToggle(canvas, "Click-through", _settings.HudClickThrough, leftColumnX, leftY, columnWidth, "hudClickThrough");
         leftY += SectionSpacing;
 
+        // Appearance section
+        leftY = DrawSectionHeader(canvas, "APPEARANCE", leftColumnX, leftY, columnWidth);
+        leftY = DrawPaletteSelectorCompact(canvas, leftColumnX, leftY, columnWidth);
+        leftY += SectionSpacing;
+
         // Data section
         leftY = DrawSectionHeader(canvas, "DATA", leftColumnX, leftY, columnWidth);
         leftY = DrawCompactButton(canvas, "Clear All Slots", leftColumnX, leftY, columnWidth, "clearAllSlots", true);
@@ -313,9 +374,9 @@ public class SettingsRenderer
         // === RIGHT COLUMN ===
         float rightY = contentTop;
 
-        // Appearance section
-        rightY = DrawSectionHeader(canvas, "APPEARANCE", rightColumnX, rightY, columnWidth);
-        rightY = DrawPaletteSelectorCompact(canvas, rightColumnX, rightY, columnWidth);
+        // MIDI section
+        rightY = DrawSectionHeader(canvas, "MIDI", rightColumnX, rightY, columnWidth);
+        rightY = DrawMidiSection(canvas, rightColumnX, rightY, columnWidth);
         rightY += SectionSpacing;
 
         // Hotkeys section
@@ -326,6 +387,12 @@ public class SettingsRenderer
 
         // Border
         canvas.DrawRoundRect(bgRect, _borderPaint);
+
+        // Draw dropdown overlay last so it appears on top
+        if (_presetDropdownOpen)
+        {
+            DrawPresetDropdownOverlay(canvas, columnWidth);
+        }
 
         canvas.Restore();
     }
@@ -618,6 +685,293 @@ public class SettingsRenderer
         canvas.DrawText("Edit config.json to customize", x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
 
         return y + _secondaryTextPaint.TextSize + ItemSpacing;
+    }
+
+    private float DrawMidiSection(SKCanvas canvas, float x, float y, float width)
+    {
+        // Enable/Disable toggle
+        y = DrawCompactToggle(canvas, "Enable MIDI", _settings.MidiSettings.Enabled, x, y, width, "midiEnabled");
+
+        // Connection status indicator
+        float statusY = y;
+        using var statusPaint = new SKPaint
+        {
+            Color = _midiConnected ? new SKColor(0x4C, 0xAF, 0x50) : _theme.TextSecondary, // Green if connected
+            IsAntialias = true,
+            TextSize = 10f,
+            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
+        };
+
+        float indicatorSize = 8f;
+        var indicatorColor = _midiConnected ? new SKColor(0x4C, 0xAF, 0x50) : new SKColor(0x9E, 0x9E, 0x9E);
+        using var indicatorPaint = new SKPaint { Color = indicatorColor, IsAntialias = true };
+        canvas.DrawCircle(x + indicatorSize / 2, statusY + 5, indicatorSize / 2, indicatorPaint);
+
+        string statusText = _midiConnected
+            ? $"Connected: {_currentMidiDevice ?? "Unknown"}"
+            : "No device connected";
+        canvas.DrawText(statusText, x + indicatorSize + 6, statusY + statusPaint.TextSize, statusPaint);
+        y = statusY + 18;
+
+        // Only show device and preset selection if MIDI is enabled
+        if (!_settings.MidiSettings.Enabled)
+        {
+            return y + ItemSpacing;
+        }
+
+        // Device selection
+        y += 4;
+        canvas.DrawText("Device:", x, y + _textPaint.TextSize, _textPaint);
+        y += _textPaint.TextSize + 4;
+
+        if (_midiDevices.Count == 0)
+        {
+            canvas.DrawText("No MIDI devices found", x + 8, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
+            y += _secondaryTextPaint.TextSize + 8;
+        }
+        else
+        {
+            foreach (var device in _midiDevices)
+            {
+                bool isSelected = device == _currentMidiDevice;
+                bool isHovered = _hoveredButton == $"midiDevice_{device}";
+
+                float itemHeight = 22f;
+                var itemRect = new SKRect(x, y, x + width, y + itemHeight);
+
+                // Background for selected/hovered
+                if (isSelected || isHovered)
+                {
+                    var bgColor = isSelected ? _theme.Accent.WithAlpha(60) : _theme.Button;
+                    using var bgPaint = new SKPaint { Color = bgColor, IsAntialias = true };
+                    canvas.DrawRoundRect(new SKRoundRect(itemRect, 3), bgPaint);
+                }
+
+                // Selection indicator
+                if (isSelected)
+                {
+                    using var checkPaint = new SKPaint
+                    {
+                        Color = _theme.Accent,
+                        IsAntialias = true,
+                        TextSize = 11f,
+                        Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
+                    };
+                    canvas.DrawText("✓", x + 4, y + 15, checkPaint);
+                }
+
+                // Device name
+                float textX = x + (isSelected ? 18 : 8);
+                using var devicePaint = new SKPaint
+                {
+                    Color = isSelected ? _theme.Text : _theme.TextSecondary,
+                    IsAntialias = true,
+                    TextSize = 11f,
+                    Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
+                };
+
+                // Truncate long device names
+                string displayName = device;
+                float maxTextWidth = width - 24;
+                while (devicePaint.MeasureText(displayName) > maxTextWidth && displayName.Length > 3)
+                {
+                    displayName = displayName.Substring(0, displayName.Length - 4) + "...";
+                }
+                canvas.DrawText(displayName, textX, y + 15, devicePaint);
+
+                _buttons.Add(new ButtonRect($"midiDevice_{device}", itemRect));
+                y += itemHeight + 2;
+            }
+        }
+
+        // Preset selection - dropdown style
+        y += 8;
+        y = DrawPresetDropdown(canvas, x, y, width);
+
+        return y + ItemSpacing;
+    }
+
+    private float DrawPresetDropdown(SKCanvas canvas, float x, float y, float width)
+    {
+        float dropdownHeight = 28f;
+        float buttonWidth = 36f;
+        float buttonSpacing = 4f;
+
+        // Label with Edit/New buttons on the right
+        canvas.DrawText("Preset:", x, y + _textPaint.TextSize, _textPaint);
+
+        // New button
+        float btnY = y - 2;
+        float newBtnX = x + width - buttonWidth;
+        var newRect = new SKRect(newBtnX, btnY, newBtnX + buttonWidth, btnY + 20f);
+        bool newHovered = _hoveredButton == "newMidiPreset";
+        using var newPaint = new SKPaint
+        {
+            Color = newHovered ? _theme.ButtonHover : _theme.Button,
+            IsAntialias = true
+        };
+        canvas.DrawRoundRect(new SKRoundRect(newRect, 3), newPaint);
+        using var btnTextPaint = new SKPaint
+        {
+            Color = _theme.TextSecondary,
+            IsAntialias = true,
+            TextSize = 9f,
+            TextAlign = SKTextAlign.Center,
+            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
+        };
+        canvas.DrawText("New", newRect.MidX, newRect.MidY + 3, btnTextPaint);
+        _buttons.Add(new ButtonRect("newMidiPreset", newRect));
+
+        // Edit button
+        float editBtnX = newBtnX - buttonWidth - buttonSpacing;
+        var editRect = new SKRect(editBtnX, btnY, editBtnX + buttonWidth, btnY + 20f);
+        bool editHovered = _hoveredButton == "editMidiPreset";
+        using var editPaint = new SKPaint
+        {
+            Color = editHovered ? _theme.Accent : _theme.Button,
+            IsAntialias = true
+        };
+        canvas.DrawRoundRect(new SKRoundRect(editRect, 3), editPaint);
+        canvas.DrawText("Edit", editRect.MidX, editRect.MidY + 3, btnTextPaint);
+        _buttons.Add(new ButtonRect("editMidiPreset", editRect));
+
+        y += _textPaint.TextSize + 4;
+
+        // Get current preset name
+        var presets = _midiPresets?.GetAllPresets() ?? Array.Empty<MidiControlScheme>();
+        var currentPreset = presets.FirstOrDefault(p => p.Name == _settings.MidiSettings.ActivePreset);
+        string displayName = currentPreset?.Name ?? _settings.MidiSettings.ActivePreset ?? "Select...";
+
+        // Dropdown button
+        var dropdownRect = new SKRect(x, y, x + width, y + dropdownHeight);
+        _presetDropdownAnchor = dropdownRect; // Store for overlay positioning
+        bool isHovered = _hoveredButton == "presetDropdownToggle";
+
+        // Background
+        using var bgPaint = new SKPaint
+        {
+            Color = isHovered ? _theme.ButtonHover : _theme.Button,
+            IsAntialias = true
+        };
+        canvas.DrawRoundRect(new SKRoundRect(dropdownRect, 4), bgPaint);
+
+        // Border
+        using var borderPaint = new SKPaint
+        {
+            Color = _presetDropdownOpen ? _theme.Accent : _theme.Border,
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1f
+        };
+        canvas.DrawRoundRect(new SKRoundRect(dropdownRect, 4), borderPaint);
+
+        // Text
+        using var textPaint = new SKPaint
+        {
+            Color = _theme.Text,
+            IsAntialias = true,
+            TextSize = 11f,
+            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
+        };
+        canvas.DrawText(displayName, x + 8, y + dropdownHeight / 2 + 4, textPaint);
+
+        // Dropdown arrow
+        float arrowX = x + width - 16;
+        float arrowY = y + dropdownHeight / 2;
+        using var arrowPaint = new SKPaint
+        {
+            Color = _theme.TextSecondary,
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1.5f,
+            StrokeCap = SKStrokeCap.Round
+        };
+        if (_presetDropdownOpen)
+        {
+            // Up arrow
+            canvas.DrawLine(arrowX - 4, arrowY + 2, arrowX, arrowY - 2, arrowPaint);
+            canvas.DrawLine(arrowX, arrowY - 2, arrowX + 4, arrowY + 2, arrowPaint);
+        }
+        else
+        {
+            // Down arrow
+            canvas.DrawLine(arrowX - 4, arrowY - 2, arrowX, arrowY + 2, arrowPaint);
+            canvas.DrawLine(arrowX, arrowY + 2, arrowX + 4, arrowY - 2, arrowPaint);
+        }
+
+        _buttons.Add(new ButtonRect("presetDropdownToggle", dropdownRect));
+        y += dropdownHeight;
+
+        return y;
+    }
+
+    private void DrawPresetDropdownOverlay(SKCanvas canvas, float width)
+    {
+        float itemHeight = 24f;
+        var presets = _midiPresets?.GetAllPresets() ?? Array.Empty<MidiControlScheme>();
+        if (presets.Count == 0) return;
+
+        float x = _presetDropdownAnchor.Left;
+        float y = _presetDropdownAnchor.Bottom + 2;
+        float menuHeight = presets.Count * itemHeight + 4;
+        var menuRect = new SKRect(x, y, x + width, y + menuHeight);
+
+        // Shadow
+        using var shadowPaint = new SKPaint
+        {
+            Color = new SKColor(0, 0, 0, 40),
+            IsAntialias = true,
+            MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 3)
+        };
+        canvas.DrawRoundRect(new SKRoundRect(new SKRect(x + 2, y + 2, x + width + 2, y + menuHeight + 2), 4), shadowPaint);
+
+        // Menu background
+        using var menuBgPaint = new SKPaint
+        {
+            Color = _theme.Background,
+            IsAntialias = true
+        };
+        canvas.DrawRoundRect(new SKRoundRect(menuRect, 4), menuBgPaint);
+
+        // Menu border
+        using var menuBorderPaint = new SKPaint
+        {
+            Color = _theme.Border,
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1f
+        };
+        canvas.DrawRoundRect(new SKRoundRect(menuRect, 4), menuBorderPaint);
+
+        float itemY = y + 2;
+        foreach (var preset in presets)
+        {
+            bool isSelected = preset.Name == _settings.MidiSettings.ActivePreset;
+            bool itemHovered = _hoveredButton == $"midiPreset_{preset.Name}";
+
+            var itemRect = new SKRect(x + 2, itemY, x + width - 2, itemY + itemHeight);
+
+            // Item hover/selected background
+            if (itemHovered || isSelected)
+            {
+                var itemBgColor = isSelected ? _theme.Accent.WithAlpha(60) : _theme.ButtonHover;
+                using var itemBgPaint = new SKPaint { Color = itemBgColor, IsAntialias = true };
+                canvas.DrawRoundRect(new SKRoundRect(itemRect, 3), itemBgPaint);
+            }
+
+            // Item text
+            using var itemTextPaint = new SKPaint
+            {
+                Color = isSelected ? _theme.Text : _theme.TextSecondary,
+                IsAntialias = true,
+                TextSize = 11f,
+                Typeface = SKTypeface.FromFamilyName("Segoe UI", isSelected ? SKFontStyle.Bold : SKFontStyle.Normal)
+            };
+            canvas.DrawText(preset.Name, x + 10, itemY + itemHeight / 2 + 4, itemTextPaint);
+
+            _buttons.Add(new ButtonRect($"midiPreset_{preset.Name}", itemRect));
+            itemY += itemHeight;
+        }
     }
 
     private record ButtonRect(string Id, SKRect Rect);
