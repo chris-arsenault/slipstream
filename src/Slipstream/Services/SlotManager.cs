@@ -11,6 +11,13 @@ public class SlotManager
     private readonly int _maxSlots;
     private SlotBehavior _slotBehavior;
 
+    // Sticky app tracking: maps process name -> slot index that the app has claimed
+    private readonly Dictionary<string, int> _stickyAppBindings = new(StringComparer.OrdinalIgnoreCase);
+    // Reverse mapping: slot index -> process name that owns it (for clearing bindings)
+    private readonly Dictionary<int, string> _slotOwners = new();
+    // The source process for the current temp slot content
+    private string? _tempSlotSourceProcess;
+
     /// <summary>
     /// Special index used to identify the temp slot in events and operations.
     /// </summary>
@@ -23,6 +30,7 @@ public class SlotManager
     public ClipboardSlot TempSlot => _tempSlot;
     public SlotBehavior SlotBehavior => _slotBehavior;
     public int NextRoundRobinIndex => _nextRoundRobinIndex;
+    public string? TempSlotSourceProcess => _tempSlotSourceProcess;
 
     public SlotManager(List<ClipboardSlot> slots, int maxSlots, SlotBehavior slotBehavior = SlotBehavior.RoundRobin)
     {
@@ -51,9 +59,16 @@ public class SlotManager
     /// <summary>
     /// Captures content to the temp slot. Used for normal Ctrl+C and external clipboard changes.
     /// </summary>
-    public void CaptureToTempSlot(object data, ClipboardType type)
+    public void CaptureToTempSlot(object data, ClipboardType type, string? sourceProcess = null)
     {
         SetSlotContent(_tempSlot, data, type);
+        _tempSlotSourceProcess = sourceProcess;
+
+        if (sourceProcess != null)
+        {
+            Console.WriteLine($"[SlotManager] Captured from process: {sourceProcess}");
+        }
+
         OnSlotChanged(TempSlotIndex, SlotChangeType.ContentUpdated);
     }
 
@@ -61,12 +76,37 @@ public class SlotManager
     /// Promotes temp slot content to a numbered slot based on current SlotBehavior.
     /// RoundRobin: cycles through slots sequentially.
     /// Fixed: always targets the active slot (changed only via Ctrl+Alt+Up/Down).
+    /// Sticky apps: if the source process is a sticky app, reuse its claimed slot.
     /// Returns the slot index it was promoted to, or -1 if target slot is locked or all slots are locked.
     /// </summary>
-    public int PromoteTempSlot()
+    public int PromoteTempSlot(HashSet<string>? stickyApps = null)
     {
         if (!_tempSlot.HasContent)
             return -1;
+
+        // Check if this is from a sticky app that already has a claimed slot
+        if (_tempSlotSourceProcess != null && stickyApps != null && stickyApps.Contains(_tempSlotSourceProcess))
+        {
+            if (_stickyAppBindings.TryGetValue(_tempSlotSourceProcess, out int claimedSlot))
+            {
+                // Sticky app has a claimed slot - reuse it (even if content is different)
+                var slot = _slots[claimedSlot];
+                if (!slot.IsLocked)
+                {
+                    Console.WriteLine($"[SlotManager] Sticky app '{_tempSlotSourceProcess}' reusing claimed slot {claimedSlot}");
+                    CopySlotContent(_tempSlot, slot);
+                    OnSlotChanged(claimedSlot, SlotChangeType.ContentUpdated);
+                    return claimedSlot;
+                }
+                else
+                {
+                    // Claimed slot is now locked - clear the binding and fall through to normal behavior
+                    Console.WriteLine($"[SlotManager] Sticky app '{_tempSlotSourceProcess}' claimed slot {claimedSlot} is locked, clearing binding");
+                    ClearStickyBinding(_tempSlotSourceProcess);
+                }
+            }
+            // Sticky app doesn't have a claimed slot yet - will claim one via normal promotion
+        }
 
         if (_slotBehavior == SlotBehavior.Fixed)
         {
@@ -76,6 +116,7 @@ public class SlotManager
                 return -1;
 
             CopySlotContent(_tempSlot, activeSlot);
+            ClaimSlotForStickyApp(_activeSlotIndex, stickyApps);
             OnSlotChanged(_activeSlotIndex, SlotChangeType.ContentUpdated);
             return _activeSlotIndex;
         }
@@ -99,6 +140,13 @@ public class SlotManager
                 // Copy temp slot content to the target slot
                 CopySlotContent(_tempSlot, slot);
                 int promotedIndex = _nextRoundRobinIndex;
+
+                // If this slot was owned by a different sticky app, clear that binding
+                ClearSlotOwnership(promotedIndex);
+
+                // If this is a sticky app, claim this slot
+                ClaimSlotForStickyApp(promotedIndex, stickyApps);
+
                 _nextRoundRobinIndex = (_nextRoundRobinIndex + 1) % _slots.Count;
                 OnSlotChanged(promotedIndex, SlotChangeType.ContentUpdated);
                 return promotedIndex;
@@ -110,6 +158,54 @@ public class SlotManager
 
         // All slots are locked
         return -1;
+    }
+
+    /// <summary>
+    /// Claims a slot for the current temp slot's source process if it's a sticky app.
+    /// </summary>
+    private void ClaimSlotForStickyApp(int slotIndex, HashSet<string>? stickyApps)
+    {
+        if (_tempSlotSourceProcess == null || stickyApps == null)
+            return;
+
+        if (!stickyApps.Contains(_tempSlotSourceProcess))
+            return;
+
+        // Clear any previous binding for this app
+        if (_stickyAppBindings.TryGetValue(_tempSlotSourceProcess, out int oldSlot))
+        {
+            _slotOwners.Remove(oldSlot);
+        }
+
+        // Create new binding
+        _stickyAppBindings[_tempSlotSourceProcess] = slotIndex;
+        _slotOwners[slotIndex] = _tempSlotSourceProcess;
+        Console.WriteLine($"[SlotManager] Sticky app '{_tempSlotSourceProcess}' claimed slot {slotIndex}");
+    }
+
+    /// <summary>
+    /// Clears the sticky binding for a specific app.
+    /// </summary>
+    private void ClearStickyBinding(string processName)
+    {
+        if (_stickyAppBindings.TryGetValue(processName, out int slotIndex))
+        {
+            _stickyAppBindings.Remove(processName);
+            _slotOwners.Remove(slotIndex);
+        }
+    }
+
+    /// <summary>
+    /// Clears any sticky app ownership of a slot (called when slot is overwritten by round-robin or direct capture).
+    /// </summary>
+    private void ClearSlotOwnership(int slotIndex)
+    {
+        if (_slotOwners.TryGetValue(slotIndex, out string? processName))
+        {
+            Console.WriteLine($"[SlotManager] Clearing sticky binding for '{processName}' (slot {slotIndex} overwritten)");
+            _stickyAppBindings.Remove(processName);
+            _slotOwners.Remove(slotIndex);
+        }
     }
 
     /// <summary>
@@ -262,6 +358,7 @@ public class SlotManager
             return;
 
         slot.Clear();
+        ClearSlotOwnership(index); // Release any sticky app binding
         OnSlotChanged(index, SlotChangeType.Cleared);
     }
 
@@ -272,6 +369,7 @@ public class SlotManager
             if (!_slots[i].IsLocked)
             {
                 _slots[i].Clear();
+                ClearSlotOwnership(i); // Release any sticky app binding
             }
         }
         OnSlotChanged(-1, SlotChangeType.AllCleared);
@@ -285,6 +383,9 @@ public class SlotManager
             _slots[i].IsLocked = false;
         }
         _nextRoundRobinIndex = 0;
+        // Clear all sticky app bindings
+        _stickyAppBindings.Clear();
+        _slotOwners.Clear();
         OnSlotChanged(-1, SlotChangeType.AllCleared);
     }
 

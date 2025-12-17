@@ -96,6 +96,17 @@ public class AppSettings
     /// MIDI input settings
     /// </summary>
     public MidiSettings MidiSettings { get; set; } = new();
+
+    /// <summary>
+    /// List of process names that should use "sticky" slot behavior.
+    /// When a sticky app writes to clipboard, it claims a slot and all subsequent
+    /// writes from that app go to the same slot until the slot is cleared or overwritten.
+    /// </summary>
+    public List<string> StickyApps { get; set; } = new()
+    {
+        "ScreenClippingHost",  // Windows Snipping Tool / Snip & Sketch
+        "SnippingTool",        // Older Windows Snipping Tool
+    };
 }
 
 public enum SlotFillMode

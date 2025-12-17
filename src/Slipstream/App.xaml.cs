@@ -21,6 +21,7 @@ public partial class App : Application
     private PasteEngine? _pasteEngine;
     private KeyboardSequencer? _keyboardSequencer;
     private DispatcherTimer? _modifierCleanupTimer;
+    private HashSet<string>? _stickyApps;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -40,6 +41,9 @@ public partial class App : Application
 
         _slotManager = new SlotManager(slots, _settings.SlotCount, _settings.SlotBehavior);
         _slotManager.SlotChanged += OnSlotChanged;
+
+        // Initialize sticky apps from settings (case-insensitive)
+        _stickyApps = new HashSet<string>(_settings.StickyApps, StringComparer.OrdinalIgnoreCase);
 
         _keyboardSequencer = new KeyboardSequencer(new KeyboardSimulator());
         _pasteEngine = new PasteEngine(_keyboardSequencer);
@@ -123,12 +127,12 @@ public partial class App : Application
         else
         {
             // Normal Ctrl+C or external clipboard change - goes to temp slot
-            _slotManager.CaptureToTempSlot(e.Data, e.Type);
+            _slotManager.CaptureToTempSlot(e.Data, e.Type, e.SourceProcessName);
 
             // Auto-promote if enabled
             if (_settings?.AutoPromote == true)
             {
-                var promotedIndex = _slotManager.PromoteTempSlot();
+                var promotedIndex = _slotManager.PromoteTempSlot(_stickyApps);
                 Console.WriteLine($"[App] AutoPromote: promoted to slot {promotedIndex}");
             }
         }
@@ -204,7 +208,7 @@ public partial class App : Application
                 break;
 
             case HotkeyAction.PromoteTempSlot:
-                var promotedIndex = _slotManager?.PromoteTempSlot();
+                var promotedIndex = _slotManager?.PromoteTempSlot(_stickyApps);
                 Console.WriteLine($"[App] PromoteTempSlot: promoted to slot {promotedIndex}");
                 break;
 

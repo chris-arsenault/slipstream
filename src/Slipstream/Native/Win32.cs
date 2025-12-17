@@ -154,4 +154,14 @@ internal static class Win32
 
     #endregion
 
+    #region Clipboard Owner
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetClipboardOwner();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    #endregion
+
 }
