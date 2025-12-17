@@ -29,16 +29,16 @@ The temp slot is your clipboard's short-term memory. Numbered slots are for thin
 
 ## Keyboard Shortcuts
 
-| Action | Shortcut |
-|--------|----------|
-| Copy directly to slot 1-10 | `Ctrl+Alt+1` through `Ctrl+Alt+0` |
-| Paste from slot 1-10 | `Ctrl+Shift+1` through `Ctrl+Shift+0` |
-| Promote temp slot to next numbered slot | `Ctrl+Alt+C` |
-| Paste from active slot | `Ctrl+Alt+V` |
-| Cycle through slots | `Ctrl+Alt+Up/Down` |
-| Toggle HUD visibility | `Ctrl+Alt+H` |
+| Action | Shortcut | Numpad |
+|--------|----------|--------|
+| Copy directly to slot 1-10 | `Ctrl+Alt+1` through `Ctrl+Alt+0` | `Ctrl+Alt+Numpad` |
+| Paste from slot 1-10 | `Ctrl+Shift+1` through `Ctrl+Shift+0` | `Ctrl+Numpad` |
+| Promote temp slot to next numbered slot | `Ctrl+Alt+C` | |
+| Paste from active slot | `Ctrl+Alt+V` | |
+| Cycle through slots | `Ctrl+Alt+Up/Down` | |
+| Toggle HUD visibility | `Ctrl+Alt+H` | |
 
-**Numpad users**: All slot shortcuts also work with numpad keys.
+**Numpad users**: Numpad shortcuts require NumLock to be on.
 
 ## The HUD
 
