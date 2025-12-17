@@ -98,8 +98,8 @@ public class TrayManager : IDisposable
     private static Icon CreateDefaultIcon()
     {
         // Try to load icon from Resources folder
-        var exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-        var exeDir = Path.GetDirectoryName(exePath) ?? ".";
+        // Use AppContext.BaseDirectory for single-file app compatibility
+        var exeDir = AppContext.BaseDirectory;
         var iconPath = Path.Combine(exeDir, "Resources", "app.ico");
 
         if (File.Exists(iconPath))
