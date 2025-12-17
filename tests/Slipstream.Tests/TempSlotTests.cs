@@ -369,6 +369,97 @@ public class TempSlotTests
         Assert.Equal("second", slots[1].TextContent);
     }
 
+    // === SetActiveSlot Tests (for HUD click functionality) ===
+
+    [Fact]
+    public void SetActiveSlot_ChangesActiveSlotIndex()
+    {
+        var slots = CreateTestSlots(10);
+        var slotManager = new SlotManager(slots, 10);
+
+        Assert.Equal(0, slotManager.ActiveSlotIndex); // Default
+
+        slotManager.SetActiveSlot(5);
+
+        Assert.Equal(5, slotManager.ActiveSlotIndex);
+    }
+
+    [Fact]
+    public void SetActiveSlot_FiresSlotChangedEvent()
+    {
+        var slots = CreateTestSlots(10);
+        var slotManager = new SlotManager(slots, 10);
+
+        SlotChangedEventArgs? receivedArgs = null;
+        slotManager.SlotChanged += (_, args) => receivedArgs = args;
+
+        slotManager.SetActiveSlot(3);
+
+        Assert.NotNull(receivedArgs);
+        Assert.Equal(3, receivedArgs.SlotIndex);
+        Assert.Equal(SlotChangeType.ActiveChanged, receivedArgs.ChangeType);
+    }
+
+    [Fact]
+    public void SetActiveSlot_DoesNotFireEvent_WhenSameSlot()
+    {
+        var slots = CreateTestSlots(10);
+        var slotManager = new SlotManager(slots, 10);
+
+        slotManager.SetActiveSlot(3);
+
+        int eventCount = 0;
+        slotManager.SlotChanged += (_, _) => eventCount++;
+
+        slotManager.SetActiveSlot(3); // Same slot
+
+        Assert.Equal(0, eventCount); // No event fired
+    }
+
+    [Fact]
+    public void SetActiveSlot_IgnoresInvalidIndex()
+    {
+        var slots = CreateTestSlots(10);
+        var slotManager = new SlotManager(slots, 10);
+
+        slotManager.SetActiveSlot(5);
+
+        slotManager.SetActiveSlot(-1); // Invalid
+        Assert.Equal(5, slotManager.ActiveSlotIndex); // Unchanged
+
+        slotManager.SetActiveSlot(10); // Out of range
+        Assert.Equal(5, slotManager.ActiveSlotIndex); // Unchanged
+
+        slotManager.SetActiveSlot(100); // Way out of range
+        Assert.Equal(5, slotManager.ActiveSlotIndex); // Unchanged
+    }
+
+    [Fact]
+    public void SetActiveSlot_AffectsFixedModePromote()
+    {
+        // This tests the full workflow: click slot in HUD -> Ctrl+Alt+V pastes from that slot
+        var slots = CreateTestSlots(10);
+        var slotManager = new SlotManager(slots, 10, SlotBehavior.Fixed);
+
+        // Put content in slots 2 and 7
+        slotManager.CaptureToSlot(2, "slot 2 content", ClipboardType.Text);
+        slotManager.CaptureToSlot(7, "slot 7 content", ClipboardType.Text);
+
+        // Click on slot 2 in HUD (simulated)
+        slotManager.SetActiveSlot(2);
+
+        // GetSlot with active index should return slot 2
+        var activeSlot = slotManager.GetSlot(slotManager.ActiveSlotIndex);
+        Assert.Equal("slot 2 content", activeSlot?.TextContent);
+
+        // Click on slot 7 in HUD (simulated)
+        slotManager.SetActiveSlot(7);
+
+        // GetSlot with active index should return slot 7
+        activeSlot = slotManager.GetSlot(slotManager.ActiveSlotIndex);
+        Assert.Equal("slot 7 content", activeSlot?.TextContent);
+    }
+
     private static List<ClipboardSlot> CreateTestSlots(int count)
     {
         var slots = new List<ClipboardSlot>();

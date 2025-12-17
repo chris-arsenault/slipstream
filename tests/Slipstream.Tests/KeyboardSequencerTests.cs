@@ -176,24 +176,75 @@ public class KeyboardSequencerTests
     }
 
     [Fact]
-    public void SendPasteWithModifierRelease_AlwaysRepressesCtrlShiftAtEnd()
+    public void SendPasteWithModifierRelease_WithShift_RepressesCtrlShiftAtEnd()
     {
         // Arrange
         var mock = new MockKeyboardSimulator();
         var sequencer = new KeyboardSequencer(mock);
 
-        // Act
-        sequencer.SendPasteWithModifierRelease();
+        // Act - Default is hotkeyHasShift=true (Ctrl+Shift+# paste)
+        sequencer.SendPasteWithModifierRelease(hotkeyHasShift: true, hotkeyHasAlt: false);
 
-        // Assert - Last two KeyDown events should be Ctrl and Shift (the paste hotkey modifiers)
-        var lastTwoKeyDowns = mock.Events
+        // Assert - Last events should include Ctrl and Shift being repressed
+        var lastKeyDowns = mock.Events
             .Where(e => e.Action == "KeyDown")
             .TakeLast(2)
             .Select(e => e.Key)
             .ToList();
 
-        Assert.Contains(VK_CONTROL, lastTwoKeyDowns);
-        Assert.Contains(VK_SHIFT, lastTwoKeyDowns);
+        Assert.Contains(VK_CONTROL, lastKeyDowns);
+        Assert.Contains(VK_SHIFT, lastKeyDowns);
+    }
+
+    [Fact]
+    public void SendPasteWithModifierRelease_WithoutShift_OnlyRepressesCtrl()
+    {
+        // Arrange - Simulates numpad paste (Ctrl+Numpad#, no Shift)
+        var mock = new MockKeyboardSimulator();
+        var sequencer = new KeyboardSequencer(mock);
+
+        // Act
+        sequencer.SendPasteWithModifierRelease(hotkeyHasShift: false, hotkeyHasAlt: false);
+
+        // Assert - Should NOT have Shift KeyDown after the Ctrl+V sequence
+        var events = mock.Events;
+        int lastCtrlUpIndex = events.FindLastIndex(e => e == ("KeyUp", VK_CONTROL));
+
+        // Get all KeyDown events after the Ctrl+V completes
+        var keyDownsAfterPaste = events
+            .Skip(lastCtrlUpIndex + 1)
+            .Where(e => e.Action == "KeyDown")
+            .Select(e => e.Key)
+            .ToList();
+
+        // Should have Ctrl but NOT Shift
+        Assert.Contains(VK_CONTROL, keyDownsAfterPaste);
+        Assert.DoesNotContain(VK_SHIFT, keyDownsAfterPaste);
+    }
+
+    [Fact]
+    public void SendPasteWithModifierRelease_WithAlt_RepressesCtrlAltAtEnd()
+    {
+        // Arrange - Simulates Ctrl+Alt+V paste
+        var mock = new MockKeyboardSimulator();
+        var sequencer = new KeyboardSequencer(mock);
+
+        // Act
+        sequencer.SendPasteWithModifierRelease(hotkeyHasShift: false, hotkeyHasAlt: true);
+
+        // Assert - Should have Ctrl and Alt repressed, but NOT Shift
+        var events = mock.Events;
+        int lastCtrlUpIndex = events.FindLastIndex(e => e == ("KeyUp", VK_CONTROL));
+
+        var keyDownsAfterPaste = events
+            .Skip(lastCtrlUpIndex + 1)
+            .Where(e => e.Action == "KeyDown")
+            .Select(e => e.Key)
+            .ToList();
+
+        Assert.Contains(VK_CONTROL, keyDownsAfterPaste);
+        Assert.Contains(VK_MENU, keyDownsAfterPaste);
+        Assert.DoesNotContain(VK_SHIFT, keyDownsAfterPaste);
     }
 
     [Fact]
@@ -265,20 +316,20 @@ public class KeyboardSequencerTests
     }
 
     [Fact]
-    public void ChainedPaste_ModifiersRestoredAfterEachPaste()
+    public void ChainedPaste_WithShift_ModifiersRestoredAfterEachPaste()
     {
         // Arrange - Simulate chained paste (e.g., Ctrl+Shift+1 then Ctrl+Shift+2)
         var mock = new MockKeyboardSimulator();
         var sequencer = new KeyboardSequencer(mock);
 
-        // Act - Simulate two consecutive paste operations
-        sequencer.SendPasteWithModifierRelease();
+        // Act - Simulate two consecutive paste operations with Shift
+        sequencer.SendPasteWithModifierRelease(hotkeyHasShift: true, hotkeyHasAlt: false);
 
         // Clear events for second paste
         var firstPasteEvents = mock.Events.ToList();
         mock.Events.Clear();
 
-        sequencer.SendPasteWithModifierRelease();
+        sequencer.SendPasteWithModifierRelease(hotkeyHasShift: true, hotkeyHasAlt: false);
         var secondPasteEvents = mock.Events.ToList();
 
         // Assert - First paste should end with Ctrl and Shift being repressed
@@ -301,6 +352,39 @@ public class KeyboardSequencerTests
     }
 
     [Fact]
+    public void ChainedNumpadPaste_WithoutShift_OnlyCtrlRestoredAfterEachPaste()
+    {
+        // Arrange - Simulate chained numpad paste (e.g., Ctrl+Numpad1 then Ctrl+Numpad2)
+        // This was a bug: Shift was getting stuck because we always repressed it
+        var mock = new MockKeyboardSimulator();
+        var sequencer = new KeyboardSequencer(mock);
+
+        // Act - Simulate two consecutive numpad paste operations (no Shift)
+        sequencer.SendPasteWithModifierRelease(hotkeyHasShift: false, hotkeyHasAlt: false);
+        var firstPasteEvents = mock.Events.ToList();
+        mock.Events.Clear();
+
+        sequencer.SendPasteWithModifierRelease(hotkeyHasShift: false, hotkeyHasAlt: false);
+        var secondPasteEvents = mock.Events.ToList();
+
+        // Assert - Neither paste should have Shift repressed at the end
+        var firstPasteKeyDowns = firstPasteEvents
+            .Where(e => e.Action == "KeyDown")
+            .Select(e => e.Key)
+            .ToList();
+
+        var secondPasteKeyDowns = secondPasteEvents
+            .Where(e => e.Action == "KeyDown")
+            .Select(e => e.Key)
+            .ToList();
+
+        // Count Shift presses - should be zero (we release at start but never repress)
+        // The only KeyDowns should be for Ctrl and V (the paste combo) and Ctrl again at end
+        Assert.DoesNotContain(VK_SHIFT, firstPasteKeyDowns.TakeLast(1));
+        Assert.DoesNotContain(VK_SHIFT, secondPasteKeyDowns.TakeLast(1));
+    }
+
+    [Fact]
     public void SendPasteWithModifierRelease_EndsWithModifiersRestored()
     {
         // Arrange
@@ -308,7 +392,7 @@ public class KeyboardSequencerTests
         var sequencer = new KeyboardSequencer(mock);
 
         // Act
-        sequencer.SendPasteWithModifierRelease();
+        sequencer.SendPasteWithModifierRelease(hotkeyHasShift: true, hotkeyHasAlt: false);
 
         // Assert - The very last events should be KeyDown for Ctrl and Shift
         // This ensures modifiers are restored AFTER the paste completes
