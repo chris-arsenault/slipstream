@@ -4,10 +4,9 @@ using Slipstream.Services;
 
 namespace Slipstream.UI;
 
-public class SettingsRenderer
+public class SettingsRenderer : BaseRenderer
 {
     private AppSettings _settings;
-    private ColorTheme _theme;
     private readonly MidiPresets? _midiPresets;
 
     // MIDI state (updated externally)
@@ -23,13 +22,9 @@ public class SettingsRenderer
     private const float SectionSpacing = 16f;
     private const float ItemSpacing = 8f;
 
-    // Paints
-    private readonly SKPaint _backgroundPaint;
-    private readonly SKPaint _titleBarPaint;
-    private readonly SKPaint _titlePaint;
-    private readonly SKPaint _textPaint;
-    private readonly SKPaint _secondaryTextPaint;
-    private readonly SKPaint _borderPaint;
+    // Button action dispatch
+    private readonly Dictionary<string, Action> _buttonActions;
+    private readonly List<(string Prefix, Action<string> Handler)> _prefixHandlers;
 
     // Interactive elements
     private readonly List<ButtonRect> _buttons = new();
@@ -58,57 +53,44 @@ public class SettingsRenderer
     public bool IsStickyAppInputFocused => _stickyAppInputFocused;
 
     public SettingsRenderer(AppSettings settings, MidiPresets? midiPresets = null)
+        : base(ColorTheme.GetTheme(settings.ColorPalette))
     {
         _settings = settings;
         _midiPresets = midiPresets;
-        _theme = ColorTheme.GetTheme(settings.ColorPalette);
 
-        _backgroundPaint = new SKPaint
-        {
-            Color = _theme.Background,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
-
-        _titleBarPaint = new SKPaint
-        {
-            Color = _theme.TitleBar,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
-
-        _titlePaint = new SKPaint
-        {
-            Color = _theme.Text,
-            IsAntialias = true,
-            TextSize = 14f,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
-        };
-
-        _textPaint = new SKPaint
-        {
-            Color = _theme.Text,
-            IsAntialias = true,
-            TextSize = 12f,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
-        };
-
-        _secondaryTextPaint = new SKPaint
-        {
-            Color = _theme.TextSecondary,
-            IsAntialias = true,
-            TextSize = 10f,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
-        };
-
-        _borderPaint = new SKPaint
-        {
-            Color = _theme.Border,
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 1f
-        };
+        _buttonActions = InitializeButtonActions();
+        _prefixHandlers = InitializePrefixHandlers();
     }
+
+    private Dictionary<string, Action> InitializeButtonActions() => new()
+    {
+        ["close"] = () => CloseRequested?.Invoke(),
+        ["clearAllSlots"] = () => ClearAllSlotsRequested?.Invoke(),
+        ["resetHotkeys"] = () => ResetHotkeysRequested?.Invoke(),
+        ["startWithWindows"] = () => { _settings.StartWithWindows = !_settings.StartWithWindows; SettingsChanged?.Invoke(_settings); },
+        ["startMinimized"] = () => { _settings.StartMinimized = !_settings.StartMinimized; SettingsChanged?.Invoke(_settings); },
+        ["showHudOnStart"] = () => { _settings.ShowHudOnStart = !_settings.ShowHudOnStart; SettingsChanged?.Invoke(_settings); },
+        ["hudClickThrough"] = () => { _settings.HudClickThrough = !_settings.HudClickThrough; SettingsChanged?.Invoke(_settings); },
+        ["autoPromote"] = () => { _settings.AutoPromote = !_settings.AutoPromote; SettingsChanged?.Invoke(_settings); },
+        ["slotBehaviorRoundRobin"] = () => { _settings.SlotBehavior = SlotBehavior.RoundRobin; SettingsChanged?.Invoke(_settings); },
+        ["slotBehaviorFixed"] = () => { _settings.SlotBehavior = SlotBehavior.Fixed; SettingsChanged?.Invoke(_settings); },
+        ["paletteDark"] = () => { _settings.ColorPalette = ColorPalette.Dark; SetTheme(ColorPalette.Dark); SettingsChanged?.Invoke(_settings); },
+        ["paletteLight"] = () => { _settings.ColorPalette = ColorPalette.Light; SetTheme(ColorPalette.Light); SettingsChanged?.Invoke(_settings); },
+        ["paletteTerminal"] = () => { _settings.ColorPalette = ColorPalette.Terminal; SetTheme(ColorPalette.Terminal); SettingsChanged?.Invoke(_settings); },
+        ["midiEnabled"] = () => { _settings.MidiSettings.Enabled = !_settings.MidiSettings.Enabled; SettingsChanged?.Invoke(_settings); },
+        ["presetDropdownToggle"] = () => _presetDropdownOpen = !_presetDropdownOpen,
+        ["editMidiPreset"] = () => EditMidiPresetRequested?.Invoke(),
+        ["newMidiPreset"] = () => NewMidiPresetRequested?.Invoke(),
+        ["stickyAppInput"] = () => _stickyAppInputFocused = true,
+        ["addStickyApp"] = () => { if (!string.IsNullOrWhiteSpace(_stickyAppInput)) { AddStickyApp(_stickyAppInput.Trim()); _stickyAppInput = ""; } }
+    };
+
+    private List<(string Prefix, Action<string> Handler)> InitializePrefixHandlers() =>
+    [
+        ("midiDevice_", deviceName => MidiDeviceSelected?.Invoke(deviceName)),
+        ("midiPreset_", presetName => { _settings.MidiSettings.ActivePreset = presetName; _presetDropdownOpen = false; MidiPresetSelected?.Invoke(presetName); SettingsChanged?.Invoke(_settings); }),
+        ("removeStickyApp_", appName => RemoveStickyApp(appName))
+    ];
 
     public void SetTheme(ColorPalette palette)
     {
@@ -172,14 +154,10 @@ public class SettingsRenderer
         SettingsChanged?.Invoke(_settings);
     }
 
-    private void UpdatePaintColors()
+    protected override void UpdatePaintColors()
     {
-        _backgroundPaint.Color = _theme.Background;
-        _titleBarPaint.Color = _theme.TitleBar;
-        _titlePaint.Color = _theme.Text;
-        _textPaint.Color = _theme.Text;
-        _secondaryTextPaint.Color = _theme.TextSecondary;
-        _borderPaint.Color = _theme.Border;
+        base.UpdatePaintColors();
+        // Additional paints specific to SettingsRenderer would be updated here
     }
 
     public bool IsInTitleBar(SKPoint point)
@@ -266,125 +244,21 @@ public class SettingsRenderer
 
     private void ExecuteButtonAction(string buttonId)
     {
-        switch (buttonId)
+        // Try exact match first
+        if (_buttonActions.TryGetValue(buttonId, out var action))
         {
-            case "close":
-                CloseRequested?.Invoke();
-                break;
+            action();
+            return;
+        }
 
-            case "clearAllSlots":
-                ClearAllSlotsRequested?.Invoke();
-                break;
-
-            case "resetHotkeys":
-                ResetHotkeysRequested?.Invoke();
-                break;
-
-            case "startWithWindows":
-                _settings.StartWithWindows = !_settings.StartWithWindows;
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "startMinimized":
-                _settings.StartMinimized = !_settings.StartMinimized;
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "showHudOnStart":
-                _settings.ShowHudOnStart = !_settings.ShowHudOnStart;
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "hudClickThrough":
-                _settings.HudClickThrough = !_settings.HudClickThrough;
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "autoPromote":
-                _settings.AutoPromote = !_settings.AutoPromote;
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "slotBehaviorRoundRobin":
-                _settings.SlotBehavior = SlotBehavior.RoundRobin;
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "slotBehaviorFixed":
-                _settings.SlotBehavior = SlotBehavior.Fixed;
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "paletteDark":
-                _settings.ColorPalette = ColorPalette.Dark;
-                SetTheme(ColorPalette.Dark);
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "paletteLight":
-                _settings.ColorPalette = ColorPalette.Light;
-                SetTheme(ColorPalette.Light);
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "paletteTerminal":
-                _settings.ColorPalette = ColorPalette.Terminal;
-                SetTheme(ColorPalette.Terminal);
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "midiEnabled":
-                _settings.MidiSettings.Enabled = !_settings.MidiSettings.Enabled;
-                SettingsChanged?.Invoke(_settings);
-                break;
-
-            case "presetDropdownToggle":
-                _presetDropdownOpen = !_presetDropdownOpen;
-                break;
-
-            case "editMidiPreset":
-                EditMidiPresetRequested?.Invoke();
-                break;
-
-            case "newMidiPreset":
-                NewMidiPresetRequested?.Invoke();
-                break;
-
-            case "stickyAppInput":
-                _stickyAppInputFocused = true;
-                break;
-
-            case "addStickyApp":
-                if (!string.IsNullOrWhiteSpace(_stickyAppInput))
-                {
-                    AddStickyApp(_stickyAppInput.Trim());
-                    _stickyAppInput = "";
-                }
-                break;
-
-            default:
-                // Handle MIDI device selection
-                if (buttonId.StartsWith("midiDevice_"))
-                {
-                    var deviceName = buttonId.Substring("midiDevice_".Length);
-                    MidiDeviceSelected?.Invoke(deviceName);
-                }
-                // Handle MIDI preset selection
-                else if (buttonId.StartsWith("midiPreset_"))
-                {
-                    var presetName = buttonId.Substring("midiPreset_".Length);
-                    _settings.MidiSettings.ActivePreset = presetName;
-                    _presetDropdownOpen = false; // Close dropdown after selection
-                    MidiPresetSelected?.Invoke(presetName);
-                    SettingsChanged?.Invoke(_settings);
-                }
-                // Handle sticky app removal
-                else if (buttonId.StartsWith("removeStickyApp_"))
-                {
-                    var appName = buttonId.Substring("removeStickyApp_".Length);
-                    RemoveStickyApp(appName);
-                }
-                break;
+        // Try prefix handlers
+        foreach (var (prefix, handler) in _prefixHandlers)
+        {
+            if (buttonId.StartsWith(prefix))
+            {
+                handler(buttonId[prefix.Length..]);
+                return;
+            }
         }
     }
 

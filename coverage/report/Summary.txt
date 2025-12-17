@@ -1,0 +1,45 @@
+Summary
+  Generated on: 12/16/2025 - 6:59:54 PM
+  Coverage date: 12/16/2025 - 6:59:36 PM
+  Parser: Cobertura
+  Assemblies: 1
+  Classes: 23
+  Files: 22
+  Line coverage: 8%
+  Covered lines: 180
+  Uncovered lines: 2056
+  Coverable lines: 2236
+  Total lines: 3929
+  Branch coverage: 7.3% (51 of 691)
+  Covered branches: 51
+  Total branches: 691
+  Method coverage: 17.4% (39 of 224)
+  Full method coverage: 14.7% (33 of 224)
+  Covered methods: 39
+  Fully covered methods: 33
+  Total methods: 224
+
+Slipstream                                           8%
+  Slipstream.App                                     0%
+  Slipstream.Models.AppSettings                      0%
+  Slipstream.Models.ClipboardSlot                 32.5%
+  Slipstream.Models.ColorTheme                       0%
+  Slipstream.Models.HotkeyBinding                    0%
+  Slipstream.Native.Win32                            0%
+  Slipstream.Services.ClipboardChangedEventArgs    100%
+  Slipstream.Services.ClipboardMonitor               0%
+  Slipstream.Services.ConfigService                  0%
+  Slipstream.Services.HotkeyEventArgs                0%
+  Slipstream.Services.HotkeyManager                  0%
+  Slipstream.Services.KeyboardEvent                  0%
+  Slipstream.Services.KeyboardSequencer           46.9%
+  Slipstream.Services.KeyboardSimulator              0%
+  Slipstream.Services.PasteEngine                    0%
+  Slipstream.Services.SlotChangedEventArgs         100%
+  Slipstream.Services.SlotManager                 49.5%
+  Slipstream.UI.HudRenderer                          0%
+  Slipstream.UI.HudWindow                            0%
+  Slipstream.UI.MessageWindow                        0%
+  Slipstream.UI.SettingsRenderer                     0%
+  Slipstream.UI.SettingsWindow                       0%
+  Slipstream.UI.TrayManager                          0%

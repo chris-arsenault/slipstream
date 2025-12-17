@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using Slipstream.Content;
 using Slipstream.Models;
 using Slipstream.Native;
 
@@ -13,15 +14,17 @@ public class ClipboardMonitor : IDisposable
 {
     private readonly HwndSource _hwndSource;
     private readonly IntPtr _hwnd;
+    private readonly ContentHandlerRegistry _contentRegistry;
     private bool _isOwnClipboardChange;
     private int? _pendingTargetSlot;
 
     public event EventHandler<ClipboardChangedEventArgs>? ClipboardChanged;
 
-    public ClipboardMonitor(IntPtr hwnd, HwndSource hwndSource)
+    public ClipboardMonitor(IntPtr hwnd, HwndSource hwndSource, ContentHandlerRegistry? contentRegistry = null)
     {
         _hwnd = hwnd;
         _hwndSource = hwndSource;
+        _contentRegistry = contentRegistry ?? new ContentHandlerRegistry();
         _hwndSource.AddHook(WndProc);
     }
 
@@ -122,56 +125,15 @@ public class ClipboardMonitor : IDisposable
     {
         try
         {
-            // Check for files first (highest priority)
-            if (Clipboard.ContainsFileDropList())
+            // Use the new content handler registry for detection
+            var dataObject = Clipboard.GetDataObject();
+            if (dataObject != null)
             {
-                var files = Clipboard.GetFileDropList();
-                var fileArray = new string[files.Count];
-                files.CopyTo(fileArray, 0);
-                return (fileArray, ClipboardType.FileList);
-            }
-
-            // Check for image
-            if (Clipboard.ContainsImage())
-            {
-                var image = Clipboard.GetImage();
-                if (image != null)
+                var content = _contentRegistry.DetectContent(dataObject);
+                if (content != null)
                 {
-                    var imageData = BitmapSourceToBytes(image);
-                    if (imageData != null)
-                    {
-                        return (imageData, ClipboardType.Image);
-                    }
-                }
-            }
-
-            // Check for HTML
-            if (Clipboard.ContainsText(TextDataFormat.Html))
-            {
-                var html = Clipboard.GetText(TextDataFormat.Html);
-                var plainText = Clipboard.ContainsText(TextDataFormat.UnicodeText)
-                    ? Clipboard.GetText(TextDataFormat.UnicodeText)
-                    : Clipboard.GetText();
-                return (new ValueTuple<string, string?>(plainText, html), ClipboardType.Html);
-            }
-
-            // Check for RTF
-            if (Clipboard.ContainsText(TextDataFormat.Rtf))
-            {
-                var rtf = Clipboard.GetText(TextDataFormat.Rtf);
-                var plainText = Clipboard.ContainsText(TextDataFormat.UnicodeText)
-                    ? Clipboard.GetText(TextDataFormat.UnicodeText)
-                    : Clipboard.GetText();
-                return (new ValueTuple<string, string?>(plainText, rtf), ClipboardType.RichText);
-            }
-
-            // Check for plain text
-            if (Clipboard.ContainsText())
-            {
-                var text = Clipboard.GetText();
-                if (!string.IsNullOrEmpty(text))
-                {
-                    return (text, ClipboardType.Text);
+                    // Convert IClipboardContent back to legacy format for compatibility
+                    return ConvertToLegacyFormat(content);
                 }
             }
         }
@@ -185,6 +147,47 @@ public class ClipboardMonitor : IDisposable
         }
 
         return (null, ClipboardType.Empty);
+    }
+
+    /// <summary>
+    /// Gets clipboard content using the new IClipboardContent interface.
+    /// </summary>
+    public IClipboardContent? GetClipboardContentNew()
+    {
+        try
+        {
+            var dataObject = Clipboard.GetDataObject();
+            if (dataObject != null)
+            {
+                return _contentRegistry.DetectContent(dataObject);
+            }
+        }
+        catch (ExternalException)
+        {
+            // Clipboard is in use by another process
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error reading clipboard: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Converts IClipboardContent to legacy (data, type) tuple for backward compatibility.
+    /// </summary>
+    private static (object? Data, ClipboardType Type) ConvertToLegacyFormat(IClipboardContent content)
+    {
+        return content switch
+        {
+            TextContent text => (text.Text, ClipboardType.Text),
+            RichTextContent rtf => (new ValueTuple<string, string?>(rtf.PlainText, rtf.RichText), ClipboardType.RichText),
+            HtmlContent html => (new ValueTuple<string, string?>(html.PlainText, html.Html), ClipboardType.Html),
+            ImageContent image => (image.ImageData, ClipboardType.Image),
+            FileListContent files => (files.FilePaths, ClipboardType.FileList),
+            _ => (null, ClipboardType.Empty)
+        };
     }
 
     private static byte[]? BitmapSourceToBytes(BitmapSource source)

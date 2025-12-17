@@ -62,7 +62,7 @@ The HUD stays out of your way—drag it anywhere, and it remembers its position.
   <img src="docs/imgs/midi.png" alt="MIDI Editor" width="500">
 </p>
 
-Slipstream supports MIDI controllers for hands-free clipboard management. Map any MIDI note to paste, copy, or control actions.
+Slipstream supports MIDI controllers for clipboard management. Map any MIDI note to paste, copy, or control actions.
 
 **Features:**
 - Visual piano keyboard editor for creating custom mappings

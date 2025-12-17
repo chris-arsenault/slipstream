@@ -1,6 +1,5 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json.Serialization;
+using Slipstream.Content;
 
 namespace Slipstream.Models;
 
@@ -13,6 +12,7 @@ public class ClipboardSlot
     public bool IsLocked { get; set; }
 
     // Content storage - only one will be populated based on Type
+    // These are retained for JSON serialization compatibility
     public string? TextContent { get; set; }
     public string? RichTextContent { get; set; }
     public string? HtmlContent { get; set; }
@@ -33,40 +33,10 @@ public class ClipboardSlot
     public bool HasContent => Type != ClipboardType.Empty;
 
     [JsonIgnore]
-    public string Preview
-    {
-        get
-        {
-            return Type switch
-            {
-                ClipboardType.Text => TruncateText(TextContent, 50),
-                ClipboardType.RichText => TruncateText(TextContent ?? RichTextContent, 50),
-                ClipboardType.Html => TruncateText(TextContent ?? HtmlContent, 50),
-                ClipboardType.Image => "[Image]",
-                ClipboardType.FileList => FileListContent?.Length > 0
-                    ? $"[{FileListContent.Length} file(s)]"
-                    : "[Files]",
-                _ => ""
-            };
-        }
-    }
+    public string Preview => GetContent()?.Preview ?? "";
 
     [JsonIgnore]
-    public string TypeGlyph
-    {
-        get
-        {
-            return Type switch
-            {
-                ClipboardType.Text => "T",
-                ClipboardType.RichText => "R",
-                ClipboardType.Html => "H",
-                ClipboardType.Image => "I",
-                ClipboardType.FileList => "F",
-                _ => "-"
-            };
-        }
-    }
+    public string TypeGlyph => GetContent()?.Glyph ?? "-";
 
     public void Clear()
     {
@@ -136,51 +106,9 @@ public class ClipboardSlot
 
     /// <summary>
     /// Computes a hash of the slot's content for duplicate detection.
+    /// Delegates to the polymorphic IClipboardContent.ContentHash.
     /// </summary>
-    private string ComputeContentHash()
-    {
-        if (Type == ClipboardType.Empty)
-            return string.Empty;
-
-        using var sha = SHA256.Create();
-        byte[] hashBytes;
-
-        switch (Type)
-        {
-            case ClipboardType.Text:
-                hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(TextContent ?? ""));
-                break;
-
-            case ClipboardType.RichText:
-                var rtfContent = (TextContent ?? "") + (RichTextContent ?? "");
-                hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(rtfContent));
-                break;
-
-            case ClipboardType.Html:
-                var htmlContent = (TextContent ?? "") + (HtmlContent ?? "");
-                hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(htmlContent));
-                break;
-
-            case ClipboardType.Image:
-                // For images, hash the raw bytes directly
-                hashBytes = ImageContent != null
-                    ? sha.ComputeHash(ImageContent)
-                    : sha.ComputeHash(Array.Empty<byte>());
-                break;
-
-            case ClipboardType.FileList:
-                var fileListContent = FileListContent != null
-                    ? string.Join("|", FileListContent)
-                    : "";
-                hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(fileListContent));
-                break;
-
-            default:
-                return string.Empty;
-        }
-
-        return Convert.ToBase64String(hashBytes);
-    }
+    private string ComputeContentHash() => GetContent()?.ContentHash ?? string.Empty;
 
     /// <summary>
     /// Checks if this slot has the same content as another slot.
@@ -192,5 +120,32 @@ public class ClipboardSlot
         if (Type == ClipboardType.Empty) return true;
 
         return ContentHash == other.ContentHash;
+    }
+
+    /// <summary>
+    /// Gets the content as an IClipboardContent instance.
+    /// </summary>
+    public IClipboardContent? GetContent()
+    {
+        return Type switch
+        {
+            ClipboardType.Text => new TextContent(TextContent ?? ""),
+            ClipboardType.RichText => new Content.RichTextContent(TextContent ?? "", RichTextContent),
+            ClipboardType.Html => new Content.HtmlContent(TextContent ?? "", HtmlContent),
+            ClipboardType.Image when ImageContent != null => new Content.ImageContent(ImageContent),
+            ClipboardType.FileList when FileListContent != null => new Content.FileListContent(FileListContent),
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Sets the slot content from an IClipboardContent instance.
+    /// Uses polymorphic dispatch - each content type knows how to populate a slot.
+    /// </summary>
+    public void SetContent(IClipboardContent content)
+    {
+        Clear();
+        Timestamp = content.Timestamp;
+        content.PopulateSlot(this);
     }
 }
