@@ -18,10 +18,9 @@
     <RepositoryUrl>https://github.com/chris-arsenault/slipstream</RepositoryUrl>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
 
-    <!-- Publishing options -->
-    <PublishTrimmed>true</PublishTrimmed>
-    <TrimMode>partial</TrimMode>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Publishing options - framework-dependent for smaller size -->
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
 
   <ItemGroup>

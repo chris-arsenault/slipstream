@@ -34,11 +34,11 @@ jobs:
 
       - name: Publish Standalone
         if: github.event_name == 'push'
-        run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:Version=${{ env.VERSION }} -o publish/standalone
+        run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:Version=${{ env.VERSION }} -o publish/standalone
 
       - name: Publish Installer Build
         if: github.event_name == 'push'
-        run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:Version=${{ env.VERSION }} -o publish/installer-build
+        run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:Version=${{ env.VERSION }} -o publish/installer-build
 
       - name: Install NSIS
         if: github.event_name == 'push'
