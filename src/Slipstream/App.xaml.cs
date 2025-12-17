@@ -237,6 +237,9 @@ public partial class App : Application
         // Update our local settings reference so AutoPromote works
         _settings = settings;
 
+        // Update sticky apps from settings
+        _stickyApps = new HashSet<string>(settings.StickyApps, StringComparer.OrdinalIgnoreCase);
+
         // Update HUD theme when palette changes
         _hudWindow?.SetTheme(settings.ColorPalette);
 

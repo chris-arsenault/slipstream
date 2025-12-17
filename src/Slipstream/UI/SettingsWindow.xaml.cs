@@ -259,4 +259,33 @@ public partial class SettingsWindow : Window
             SkiaCanvas.InvalidateVisual();
         }
     }
+
+    protected override void OnTextInput(TextCompositionEventArgs e)
+    {
+        base.OnTextInput(e);
+
+        if (_renderer.IsStickyAppInputFocused && !string.IsNullOrEmpty(e.Text))
+        {
+            _renderer.HandleTextInput(e.Text);
+            SkiaCanvas.InvalidateVisual();
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+
+        if (_renderer.IsStickyAppInputFocused)
+        {
+            _renderer.HandleKeyDown(e.Key);
+            SkiaCanvas.InvalidateVisual();
+
+            // Handle these keys to prevent them from doing other things
+            if (e.Key == Key.Back || e.Key == Key.Enter || e.Key == Key.Escape)
+            {
+                e.Handled = true;
+            }
+        }
+    }
 }

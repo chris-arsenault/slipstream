@@ -41,6 +41,11 @@ public class SettingsRenderer
     private bool _presetDropdownOpen;
     private SKRect _presetDropdownAnchor; // Position of the dropdown button for overlay
 
+    // Sticky app input state
+    private string _stickyAppInput = "";
+    private SKRect _stickyAppInputRect;
+    private bool _stickyAppInputFocused;
+
     public event Action? CloseRequested;
     public event Action<AppSettings>? SettingsChanged;
     public event Action? ClearAllSlotsRequested;
@@ -49,6 +54,8 @@ public class SettingsRenderer
     public event Action<string>? MidiPresetSelected;
     public event Action? EditMidiPresetRequested;
     public event Action? NewMidiPresetRequested;
+
+    public bool IsStickyAppInputFocused => _stickyAppInputFocused;
 
     public SettingsRenderer(AppSettings settings, MidiPresets? midiPresets = null)
     {
@@ -114,6 +121,55 @@ public class SettingsRenderer
         _midiDevices = devices;
         _currentMidiDevice = currentDevice;
         _midiConnected = connected;
+    }
+
+    public void HandleTextInput(string text)
+    {
+        if (_stickyAppInputFocused)
+        {
+            _stickyAppInput += text;
+        }
+    }
+
+    public void HandleKeyDown(System.Windows.Input.Key key)
+    {
+        if (!_stickyAppInputFocused) return;
+
+        switch (key)
+        {
+            case System.Windows.Input.Key.Back:
+                if (_stickyAppInput.Length > 0)
+                    _stickyAppInput = _stickyAppInput[..^1];
+                break;
+
+            case System.Windows.Input.Key.Enter:
+                if (!string.IsNullOrWhiteSpace(_stickyAppInput))
+                {
+                    AddStickyApp(_stickyAppInput.Trim());
+                    _stickyAppInput = "";
+                }
+                break;
+
+            case System.Windows.Input.Key.Escape:
+                _stickyAppInputFocused = false;
+                _stickyAppInput = "";
+                break;
+        }
+    }
+
+    private void AddStickyApp(string processName)
+    {
+        if (!_settings.StickyApps.Contains(processName, StringComparer.OrdinalIgnoreCase))
+        {
+            _settings.StickyApps.Add(processName);
+            SettingsChanged?.Invoke(_settings);
+        }
+    }
+
+    private void RemoveStickyApp(string processName)
+    {
+        _settings.StickyApps.RemoveAll(s => s.Equals(processName, StringComparison.OrdinalIgnoreCase));
+        SettingsChanged?.Invoke(_settings);
     }
 
     private void UpdatePaintColors()
@@ -294,6 +350,18 @@ public class SettingsRenderer
                 NewMidiPresetRequested?.Invoke();
                 break;
 
+            case "stickyAppInput":
+                _stickyAppInputFocused = true;
+                break;
+
+            case "addStickyApp":
+                if (!string.IsNullOrWhiteSpace(_stickyAppInput))
+                {
+                    AddStickyApp(_stickyAppInput.Trim());
+                    _stickyAppInput = "";
+                }
+                break;
+
             default:
                 // Handle MIDI device selection
                 if (buttonId.StartsWith("midiDevice_"))
@@ -309,6 +377,12 @@ public class SettingsRenderer
                     _presetDropdownOpen = false; // Close dropdown after selection
                     MidiPresetSelected?.Invoke(presetName);
                     SettingsChanged?.Invoke(_settings);
+                }
+                // Handle sticky app removal
+                else if (buttonId.StartsWith("removeStickyApp_"))
+                {
+                    var appName = buttonId.Substring("removeStickyApp_".Length);
+                    RemoveStickyApp(appName);
                 }
                 break;
         }
@@ -370,6 +444,11 @@ public class SettingsRenderer
         // Data section
         leftY = DrawSectionHeader(canvas, "DATA", leftColumnX, leftY, columnWidth);
         leftY = DrawCompactButton(canvas, "Clear All Slots", leftColumnX, leftY, columnWidth, "clearAllSlots", true);
+        leftY += SectionSpacing;
+
+        // Sticky Apps section
+        leftY = DrawSectionHeader(canvas, "STICKY APPS", leftColumnX, leftY, columnWidth);
+        leftY = DrawStickyAppsSection(canvas, leftColumnX, leftY, columnWidth);
 
         // === RIGHT COLUMN ===
         float rightY = contentTop;
@@ -651,6 +730,153 @@ public class SettingsRenderer
         }
 
         return y + labelPaint.TextSize + ItemSpacing;
+    }
+
+    private float DrawStickyAppsSection(SKCanvas canvas, float x, float y, float width)
+    {
+        float inputHeight = 24f;
+        float itemHeight = 22f;
+        float buttonSize = 18f;
+
+        // Description
+        canvas.DrawText("Apps that reuse a single slot:", x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
+        y += _secondaryTextPaint.TextSize + 6;
+
+        // List of sticky apps
+        foreach (var app in _settings.StickyApps)
+        {
+            var itemRect = new SKRect(x, y, x + width, y + itemHeight);
+
+            // Background
+            bool isHovered = _hoveredButton == $"removeStickyApp_{app}";
+            using var itemBgPaint = new SKPaint
+            {
+                Color = _theme.SlotBackground,
+                IsAntialias = true
+            };
+            canvas.DrawRoundRect(new SKRoundRect(itemRect, 3), itemBgPaint);
+
+            // App name
+            using var appPaint = new SKPaint
+            {
+                Color = _theme.Text,
+                IsAntialias = true,
+                TextSize = 11f,
+                Typeface = SKTypeface.FromFamilyName("Consolas", SKFontStyle.Normal)
+            };
+
+            // Truncate if needed
+            string displayName = app;
+            float maxTextWidth = width - buttonSize - 16;
+            while (appPaint.MeasureText(displayName) > maxTextWidth && displayName.Length > 3)
+            {
+                displayName = displayName[..^4] + "...";
+            }
+            canvas.DrawText(displayName, x + 6, y + itemHeight / 2 + 4, appPaint);
+
+            // Remove button (X)
+            var removeRect = new SKRect(x + width - buttonSize - 2, y + (itemHeight - buttonSize) / 2,
+                                        x + width - 2, y + (itemHeight + buttonSize) / 2);
+
+            using var removeBgPaint = new SKPaint
+            {
+                Color = isHovered ? _theme.DangerHover : SKColors.Transparent,
+                IsAntialias = true
+            };
+            canvas.DrawRoundRect(new SKRoundRect(removeRect, 3), removeBgPaint);
+
+            // X icon
+            using var xPaint = new SKPaint
+            {
+                Color = isHovered ? _theme.Text : _theme.TextSecondary,
+                IsAntialias = true,
+                StrokeWidth = 1.5f,
+                Style = SKPaintStyle.Stroke
+            };
+            float cx = removeRect.MidX;
+            float cy = removeRect.MidY;
+            float xSize = 4f;
+            canvas.DrawLine(cx - xSize, cy - xSize, cx + xSize, cy + xSize, xPaint);
+            canvas.DrawLine(cx + xSize, cy - xSize, cx - xSize, cy + xSize, xPaint);
+
+            _buttons.Add(new ButtonRect($"removeStickyApp_{app}", removeRect));
+            y += itemHeight + 2;
+        }
+
+        // Input field for adding new app
+        y += 4;
+        _stickyAppInputRect = new SKRect(x, y, x + width - 40, y + inputHeight);
+        var addButtonRect = new SKRect(x + width - 36, y, x + width, y + inputHeight);
+
+        // Input field background
+        using var inputBgPaint = new SKPaint
+        {
+            Color = _stickyAppInputFocused ? _theme.Background : _theme.SlotBackground,
+            IsAntialias = true
+        };
+        canvas.DrawRoundRect(new SKRoundRect(_stickyAppInputRect, 3), inputBgPaint);
+
+        // Input field border
+        using var inputBorderPaint = new SKPaint
+        {
+            Color = _stickyAppInputFocused ? _theme.Accent : _theme.Border,
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1f
+        };
+        canvas.DrawRoundRect(new SKRoundRect(_stickyAppInputRect, 3), inputBorderPaint);
+
+        // Input text or placeholder
+        using var inputTextPaint = new SKPaint
+        {
+            Color = string.IsNullOrEmpty(_stickyAppInput) ? _theme.TextSecondary : _theme.Text,
+            IsAntialias = true,
+            TextSize = 11f,
+            Typeface = SKTypeface.FromFamilyName("Consolas", SKFontStyle.Normal)
+        };
+        string displayText = string.IsNullOrEmpty(_stickyAppInput) ? "Process name..." : _stickyAppInput;
+
+        // Add cursor if focused
+        if (_stickyAppInputFocused && !string.IsNullOrEmpty(_stickyAppInput))
+        {
+            displayText = _stickyAppInput + "|";
+        }
+        else if (_stickyAppInputFocused)
+        {
+            displayText = "|";
+            inputTextPaint.Color = _theme.Text;
+        }
+
+        canvas.DrawText(displayText, x + 6, y + inputHeight / 2 + 4, inputTextPaint);
+        _buttons.Add(new ButtonRect("stickyAppInput", _stickyAppInputRect));
+
+        // Add button
+        bool addHovered = _hoveredButton == "addStickyApp";
+        using var addBgPaint = new SKPaint
+        {
+            Color = addHovered ? _theme.Accent : _theme.Button,
+            IsAntialias = true
+        };
+        canvas.DrawRoundRect(new SKRoundRect(addButtonRect, 3), addBgPaint);
+
+        using var addTextPaint = new SKPaint
+        {
+            Color = _theme.Text,
+            IsAntialias = true,
+            TextSize = 11f,
+            TextAlign = SKTextAlign.Center,
+            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
+        };
+        canvas.DrawText("+", addButtonRect.MidX, addButtonRect.MidY + 4, addTextPaint);
+        _buttons.Add(new ButtonRect("addStickyApp", addButtonRect));
+
+        y += inputHeight + 4;
+
+        // Helper text
+        canvas.DrawText("Check console for process names", x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
+        y += _secondaryTextPaint.TextSize;
+
+        return y + ItemSpacing;
     }
 
     private float DrawHotkeyInfoCompact(SKCanvas canvas, float x, float y, float width)
