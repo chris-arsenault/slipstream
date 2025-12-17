@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Serialization;
 
 namespace Slipstream.Models;
@@ -16,6 +18,16 @@ public class ClipboardSlot
     public string? HtmlContent { get; set; }
     public byte[]? ImageContent { get; set; }
     public string[]? FileListContent { get; set; }
+
+    // Cached content hash for duplicate detection (computed on set, not serialized)
+    private string? _contentHash;
+
+    /// <summary>
+    /// Gets a hash of the slot's content for duplicate detection.
+    /// Computed lazily and cached until content changes.
+    /// </summary>
+    [JsonIgnore]
+    public string ContentHash => _contentHash ??= ComputeContentHash();
 
     [JsonIgnore]
     public bool HasContent => Type != ClipboardType.Empty;
@@ -66,6 +78,7 @@ public class ClipboardSlot
         HtmlContent = null;
         ImageContent = null;
         FileListContent = null;
+        _contentHash = null; // Invalidate cached hash
     }
 
     public void SetText(string text)
@@ -119,5 +132,65 @@ public class ClipboardSlot
 
         if (normalized.Length <= maxLength) return normalized;
         return normalized[..(maxLength - 3)] + "...";
+    }
+
+    /// <summary>
+    /// Computes a hash of the slot's content for duplicate detection.
+    /// </summary>
+    private string ComputeContentHash()
+    {
+        if (Type == ClipboardType.Empty)
+            return string.Empty;
+
+        using var sha = SHA256.Create();
+        byte[] hashBytes;
+
+        switch (Type)
+        {
+            case ClipboardType.Text:
+                hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(TextContent ?? ""));
+                break;
+
+            case ClipboardType.RichText:
+                var rtfContent = (TextContent ?? "") + (RichTextContent ?? "");
+                hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(rtfContent));
+                break;
+
+            case ClipboardType.Html:
+                var htmlContent = (TextContent ?? "") + (HtmlContent ?? "");
+                hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(htmlContent));
+                break;
+
+            case ClipboardType.Image:
+                // For images, hash the raw bytes directly
+                hashBytes = ImageContent != null
+                    ? sha.ComputeHash(ImageContent)
+                    : sha.ComputeHash(Array.Empty<byte>());
+                break;
+
+            case ClipboardType.FileList:
+                var fileListContent = FileListContent != null
+                    ? string.Join("|", FileListContent)
+                    : "";
+                hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(fileListContent));
+                break;
+
+            default:
+                return string.Empty;
+        }
+
+        return Convert.ToBase64String(hashBytes);
+    }
+
+    /// <summary>
+    /// Checks if this slot has the same content as another slot.
+    /// </summary>
+    public bool HasSameContent(ClipboardSlot other)
+    {
+        if (other == null) return false;
+        if (Type != other.Type) return false;
+        if (Type == ClipboardType.Empty) return true;
+
+        return ContentHash == other.ContentHash;
     }
 }

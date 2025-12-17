@@ -87,6 +87,15 @@ public class SlotManager
             var slot = _slots[_nextRoundRobinIndex];
             if (!slot.IsLocked)
             {
+                // Skip if content is identical to what's already in the target slot
+                // This prevents duplicate entries from tools like Snipping Tool that
+                // write to clipboard multiple times for a single screenshot
+                if (_tempSlot.HasSameContent(slot))
+                {
+                    Console.WriteLine($"[SlotManager] Skipping duplicate content in slot {_nextRoundRobinIndex}");
+                    return _nextRoundRobinIndex; // Return the slot but don't advance or copy
+                }
+
                 // Copy temp slot content to the target slot
                 CopySlotContent(_tempSlot, slot);
                 int promotedIndex = _nextRoundRobinIndex;
