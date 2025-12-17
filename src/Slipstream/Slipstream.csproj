@@ -17,6 +17,11 @@
     <PackageProjectUrl>https://github.com/chris-arsenault/slipstream</PackageProjectUrl>
     <RepositoryUrl>https://github.com/chris-arsenault/slipstream</RepositoryUrl>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+
+    <!-- Publishing options -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
