@@ -17,6 +17,8 @@ public class ClipboardMonitor : IDisposable
     private readonly ContentHandlerRegistry _contentRegistry;
     private bool _isOwnClipboardChange;
     private int? _pendingTargetSlot;
+    private DateTime _ownClipboardChangeTime = DateTime.MinValue;
+    private const int OwnClipboardCooldownMs = 500; // Ignore clipboard changes for 500ms after our own paste
 
     public event EventHandler<ClipboardChangedEventArgs>? ClipboardChanged;
 
@@ -41,6 +43,10 @@ public class ClipboardMonitor : IDisposable
     public void SetOwnClipboardChange(bool isOwn)
     {
         _isOwnClipboardChange = isOwn;
+        if (isOwn)
+        {
+            _ownClipboardChangeTime = DateTime.UtcNow;
+        }
     }
 
     /// <summary>
@@ -66,9 +72,17 @@ public class ClipboardMonitor : IDisposable
     {
         if (msg == Win32.WM_CLIPBOARDUPDATE)
         {
-            if (!_isOwnClipboardChange)
+            // Check if we're within the cooldown period after our own clipboard change
+            var timeSinceOwnChange = (DateTime.UtcNow - _ownClipboardChangeTime).TotalMilliseconds;
+            bool inCooldown = timeSinceOwnChange < OwnClipboardCooldownMs;
+
+            if (!_isOwnClipboardChange && !inCooldown)
             {
                 OnClipboardChanged();
+            }
+            else if (inCooldown)
+            {
+                Console.WriteLine($"[ClipboardMonitor] Ignoring clipboard change during cooldown ({timeSinceOwnChange:F0}ms since paste)");
             }
             _isOwnClipboardChange = false;
             handled = true;
