@@ -4,12 +4,11 @@ using Slipstream.Services;
 
 namespace Slipstream.UI;
 
-public class MidiEditorRenderer
+public class MidiEditorRenderer : BaseRenderer
 {
     private MidiControlScheme _editingPreset;
     private readonly MidiPresets _midiPresets;
     private readonly ConfigService _configService;
-    private ColorTheme _theme;
 
     // State
     private int _selectedNote = -1;
@@ -27,6 +26,10 @@ public class MidiEditorRenderer
 
     // Action selection state
     private ActionCategory _selectedCategory = ActionCategory.None;
+
+    // Button action dispatch
+    private readonly Dictionary<string, Action> _buttonActions;
+    private readonly List<(string Prefix, Action<string> Handler)> _prefixHandlers;
 
     // Layout constants
     private const float TitleBarHeight = 40f;
@@ -67,15 +70,8 @@ public class MidiEditorRenderer
         CopyModifier
     }
 
-    // Paints
-    private readonly SKPaint _backgroundPaint;
-    private readonly SKPaint _titleBarPaint;
-    private readonly SKPaint _titlePaint;
-    private readonly SKPaint _textPaint;
-    private readonly SKPaint _secondaryTextPaint;
-    private readonly SKPaint _borderPaint;
-
     public MidiEditorRenderer(MidiControlScheme preset, MidiPresets midiPresets, ConfigService configService)
+        : base(ColorTheme.Dark)
     {
         _editingPreset = preset;
         _midiPresets = midiPresets;
@@ -83,53 +79,50 @@ public class MidiEditorRenderer
         _editingName = preset.Name;
         _editingDescription = preset.Description;
         _editingDeviceHint = preset.DeviceHint;
-        _theme = ColorTheme.Dark;
 
-        _backgroundPaint = new SKPaint
+        _buttonActions = InitializeButtonActions();
+        _prefixHandlers = InitializePrefixHandlers();
+    }
+
+    private Dictionary<string, Action> InitializeButtonActions() => new()
+    {
+        ["close"] = () => CloseRequested?.Invoke(),
+        ["save"] = SavePreset,
+        ["octaveLeft"] = () => { if (_baseOctave > 0) _baseOctave--; },
+        ["octaveRight"] = () => { if (_baseOctave < 8) _baseOctave++; },
+        ["category_paste"] = () => _selectedCategory = ActionCategory.Paste,
+        ["category_copy"] = () => _selectedCategory = ActionCategory.Copy,
+        ["category_control"] = () => _selectedCategory = ActionCategory.Control,
+        ["category_copymod"] = () => { _selectedCategory = ActionCategory.CopyModifier; if (_selectedNote >= 0) SetCopyModifier(_selectedNote); },
+        ["category_none"] = () => { _selectedCategory = ActionCategory.None; if (_selectedNote >= 0) { ClearMappingForNote(_selectedNote); if (_editingPreset.CopyModifier?.Number == _selectedNote) ClearCopyModifier(); } }
+    };
+
+    private List<(string Prefix, Action<string> Handler)> InitializePrefixHandlers() =>
+    [
+        ("key_", noteStr => SelectNote(int.Parse(noteStr))),
+        ("slot_", slotStr => HandleSlotAction(int.Parse(slotStr))),
+        ("control_", HandleControlAction)
+    ];
+
+    private void HandleSlotAction(int slot)
+    {
+        if (_selectedNote < 0) return;
+
+        string action = _selectedCategory switch
         {
-            Color = _theme.Background,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
+            ActionCategory.Paste => $"PasteFromSlot{slot}",
+            ActionCategory.Copy => $"CopyToSlot{slot}",
+            _ => ""
         };
 
-        _titleBarPaint = new SKPaint
-        {
-            Color = _theme.TitleBar,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
+        if (!string.IsNullOrEmpty(action))
+            AssignAction(_selectedNote, action);
+    }
 
-        _titlePaint = new SKPaint
-        {
-            Color = _theme.Text,
-            IsAntialias = true,
-            TextSize = 14f,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
-        };
-
-        _textPaint = new SKPaint
-        {
-            Color = _theme.Text,
-            IsAntialias = true,
-            TextSize = 12f,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
-        };
-
-        _secondaryTextPaint = new SKPaint
-        {
-            Color = _theme.TextSecondary,
-            IsAntialias = true,
-            TextSize = 10f,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
-        };
-
-        _borderPaint = new SKPaint
-        {
-            Color = _theme.Border,
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 1f
-        };
+    private void HandleControlAction(string actionId)
+    {
+        if (_selectedNote >= 0)
+            AssignAction(_selectedNote, actionId);
     }
 
     public void SetNotePressed(int note, bool pressed)
@@ -384,87 +377,21 @@ public class MidiEditorRenderer
 
     private void ExecuteButtonAction(string buttonId)
     {
-        switch (buttonId)
+        // Try exact match first
+        if (_buttonActions.TryGetValue(buttonId, out var action))
         {
-            case "close":
-                CloseRequested?.Invoke();
-                break;
+            action();
+            return;
+        }
 
-            case "save":
-                SavePreset();
-                break;
-
-            case "octaveLeft":
-                if (_baseOctave > 0) _baseOctave--;
-                break;
-
-            case "octaveRight":
-                if (_baseOctave < 8) _baseOctave++;
-                break;
-
-            // Category buttons
-            case "category_paste":
-                _selectedCategory = ActionCategory.Paste;
-                break;
-            case "category_copy":
-                _selectedCategory = ActionCategory.Copy;
-                break;
-            case "category_control":
-                _selectedCategory = ActionCategory.Control;
-                break;
-            case "category_copymod":
-                _selectedCategory = ActionCategory.CopyModifier;
-                if (_selectedNote >= 0)
-                {
-                    SetCopyModifier(_selectedNote);
-                }
-                break;
-            case "category_none":
-                _selectedCategory = ActionCategory.None;
-                if (_selectedNote >= 0)
-                {
-                    ClearMappingForNote(_selectedNote);
-                    // Also clear copy modifier if this note was the copy modifier
-                    if (_editingPreset.CopyModifier?.Number == _selectedNote)
-                    {
-                        ClearCopyModifier();
-                    }
-                }
-                break;
-
-            // Slot buttons (1-10)
-            default:
-                if (buttonId.StartsWith("key_"))
-                {
-                    int note = int.Parse(buttonId.Substring(4));
-                    SelectNote(note);
-                }
-                else if (buttonId.StartsWith("slot_"))
-                {
-                    int slot = int.Parse(buttonId.Substring(5));
-                    if (_selectedNote >= 0)
-                    {
-                        string action = _selectedCategory switch
-                        {
-                            ActionCategory.Paste => $"PasteFromSlot{slot}",
-                            ActionCategory.Copy => $"CopyToSlot{slot}",
-                            _ => ""
-                        };
-                        if (!string.IsNullOrEmpty(action))
-                        {
-                            AssignAction(_selectedNote, action);
-                        }
-                    }
-                }
-                else if (buttonId.StartsWith("control_"))
-                {
-                    string action = buttonId.Substring(8);
-                    if (_selectedNote >= 0)
-                    {
-                        AssignAction(_selectedNote, action);
-                    }
-                }
-                break;
+        // Try prefix handlers
+        foreach (var (prefix, handler) in _prefixHandlers)
+        {
+            if (buttonId.StartsWith(prefix))
+            {
+                handler(buttonId[prefix.Length..]);
+                return;
+            }
         }
     }
 

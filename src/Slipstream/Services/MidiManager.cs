@@ -1,5 +1,6 @@
 using Melanchall.DryWetMidi.Core;
 using Melanchall.DryWetMidi.Multimedia;
+using Slipstream.Commands;
 using Slipstream.Models;
 
 namespace Slipstream.Services;
@@ -12,6 +13,7 @@ public class MidiManager : IDisposable
     private InputDevice? _inputDevice;
     private MidiSettings _settings;
     private readonly MidiPresets _presets;
+    private readonly CommandRegistry _commandRegistry;
     private Dictionary<string, MidiTrigger> _activeMappings = new();
     private MidiTrigger? _copyModifier;
     private bool _copyModifierHeld = false;
@@ -22,11 +24,6 @@ public class MidiManager : IDisposable
     private HashSet<string> _lastKnownDevices = new(); // Track devices for change detection
     private const int PollIntervalMs = 1000; // Poll every 1 second for faster hot-plug response
     private bool _editMode; // When true, fires raw events instead of actions
-
-    /// <summary>
-    /// Fires when a MIDI input triggers a Slipstream action
-    /// </summary>
-    public event EventHandler<HotkeyEventArgs>? ActionTriggered;
 
     /// <summary>
     /// Fires when device connection status changes
@@ -62,10 +59,11 @@ public class MidiManager : IDisposable
         Console.WriteLine($"[MIDI] Edit mode: {enabled}");
     }
 
-    public MidiManager(MidiSettings settings, MidiPresets presets)
+    public MidiManager(MidiSettings settings, MidiPresets presets, CommandRegistry commandRegistry)
     {
         _settings = settings;
         _presets = presets;
+        _commandRegistry = commandRegistry;
         LoadMappings();
     }
 
@@ -478,62 +476,12 @@ public class MidiManager : IDisposable
             Console.WriteLine($"[MIDI] Copy modifier active: {actionName} -> {effectiveAction}");
         }
 
-        // Convert action name to HotkeyAction + slot index
-        var args = ParseActionName(effectiveAction);
-        if (args != null)
+        // Execute command via unified command registry
+        Console.WriteLine($"[MIDI] Executing action: {effectiveAction}");
+        if (!_commandRegistry.Execute(effectiveAction))
         {
-            Console.WriteLine($"[MIDI] Firing action: {effectiveAction} (action={args.Action}, slot={args.SlotIndex})");
-            ActionTriggered?.Invoke(this, args);
+            Console.WriteLine($"[MIDI] Unknown or failed action: {effectiveAction}");
         }
-        else
-        {
-            Console.WriteLine($"[MIDI] Unknown action: {effectiveAction}");
-        }
-    }
-
-    private static HotkeyEventArgs? ParseActionName(string actionName)
-    {
-        // Parse slot-based actions - all MIDI actions have InputSource.Midi
-        if (actionName.StartsWith("CopyToSlot"))
-        {
-            if (int.TryParse(actionName.AsSpan(10), out int slot))
-            {
-                return new HotkeyEventArgs(HotkeyAction.CopyToSlot, slot - 1, source: InputSource.Midi); // 1-based to 0-based
-            }
-        }
-        else if (actionName.StartsWith("PasteFromSlot"))
-        {
-            if (int.TryParse(actionName.AsSpan(13), out int slot))
-            {
-                return new HotkeyEventArgs(HotkeyAction.PasteFromSlot, slot - 1, source: InputSource.Midi);
-            }
-        }
-        else if (actionName.StartsWith("LockSlot"))
-        {
-            if (int.TryParse(actionName.AsSpan(8), out int slot))
-            {
-                return new HotkeyEventArgs(HotkeyAction.LockSlot, slot - 1, source: InputSource.Midi);
-            }
-        }
-        else if (actionName.StartsWith("ClearSlot"))
-        {
-            if (int.TryParse(actionName.AsSpan(9), out int slot))
-            {
-                return new HotkeyEventArgs(HotkeyAction.ClearSlot, slot - 1, source: InputSource.Midi);
-            }
-        }
-
-        // Parse non-slot actions - all MIDI actions have InputSource.Midi
-        return actionName switch
-        {
-            "ToggleHud" => new HotkeyEventArgs(HotkeyAction.ToggleHud, source: InputSource.Midi),
-            "CycleForward" => new HotkeyEventArgs(HotkeyAction.CycleForward, source: InputSource.Midi),
-            "CycleBackward" => new HotkeyEventArgs(HotkeyAction.CycleBackward, source: InputSource.Midi),
-            "ClearAll" => new HotkeyEventArgs(HotkeyAction.ClearAll, source: InputSource.Midi),
-            "PromoteTempSlot" => new HotkeyEventArgs(HotkeyAction.PromoteTempSlot, source: InputSource.Midi),
-            "PasteFromActiveSlot" => new HotkeyEventArgs(HotkeyAction.PasteFromActiveSlot, source: InputSource.Midi),
-            _ => null
-        };
     }
 
     public void Dispose()

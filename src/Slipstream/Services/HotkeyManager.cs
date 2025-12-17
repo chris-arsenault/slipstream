@@ -1,4 +1,5 @@
 using System.Windows.Interop;
+using Slipstream.Commands;
 using Slipstream.Models;
 using Slipstream.Native;
 
@@ -8,24 +9,25 @@ public class HotkeyManager : IDisposable
 {
     private HwndSource? _hwndSource;
     private IntPtr _hwnd;
-    private readonly Dictionary<int, (string ActionName, HotkeyAction Action, int SlotIndex)> _registeredHotkeys = new();
+    private readonly Dictionary<int, string> _registeredHotkeys = new();
+    private readonly CommandRegistry _commandRegistry;
     private int _nextHotkeyId = 1;
 
-    public event EventHandler<HotkeyEventArgs>? HotkeyPressed;
-
-    public HotkeyManager(IntPtr hwnd, HwndSource hwndSource)
+    public HotkeyManager(IntPtr hwnd, HwndSource hwndSource, CommandRegistry commandRegistry)
     {
         _hwnd = hwnd;
         _hwndSource = hwndSource;
+        _commandRegistry = commandRegistry;
         _hwndSource.AddHook(WndProc);
     }
 
     public bool Register(string actionName, ModifierKeys modifiers, VirtualKey key)
     {
-        var action = ParseActionName(actionName, out int slotIndex);
-        if (action == HotkeyAction.None)
+        // Validate the action name can be parsed by the command registry
+        var command = _commandRegistry.CreateCommand(actionName);
+        if (command == null)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to parse action: {actionName}");
+            System.Diagnostics.Debug.WriteLine($"[Hotkey] Unknown action: {actionName}");
             return false;
         }
 
@@ -35,7 +37,7 @@ public class HotkeyManager : IDisposable
         bool success = Win32.RegisterHotKey(_hwnd, hotkeyId, win32Modifiers | Win32.MOD_NOREPEAT, (uint)key);
         if (success)
         {
-            _registeredHotkeys[hotkeyId] = (actionName, action, slotIndex);
+            _registeredHotkeys[hotkeyId] = actionName;
             Console.WriteLine($"[Hotkey] Registered: {actionName} (id={hotkeyId}, mods=0x{win32Modifiers:X}, key=0x{(uint)key:X})");
             return true;
         }
@@ -50,7 +52,7 @@ public class HotkeyManager : IDisposable
     public void Unregister(string actionName)
     {
         var toRemove = _registeredHotkeys
-            .Where(kvp => kvp.Value.ActionName == actionName)
+            .Where(kvp => kvp.Value.Equals(actionName, StringComparison.OrdinalIgnoreCase))
             .Select(kvp => kvp.Key)
             .ToList();
 
@@ -72,7 +74,7 @@ public class HotkeyManager : IDisposable
 
     public bool IsRegistered(string actionName)
     {
-        return _registeredHotkeys.Values.Any(v => v.ActionName == actionName);
+        return _registeredHotkeys.Values.Any(v => v.Equals(actionName, StringComparison.OrdinalIgnoreCase));
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -83,12 +85,11 @@ public class HotkeyManager : IDisposable
             uint modifiers = (uint)(lParam.ToInt32() & 0xFFFF);
             uint vk = (uint)(lParam.ToInt32() >> 16);
             Console.WriteLine($"[Hotkey] WM_HOTKEY received, id={hotkeyId}, mods=0x{modifiers:X}, vk=0x{vk:X}");
-            if (_registeredHotkeys.TryGetValue(hotkeyId, out var registration))
+
+            if (_registeredHotkeys.TryGetValue(hotkeyId, out var actionName))
             {
-                bool hasShift = (modifiers & Win32.MOD_SHIFT) != 0;
-                bool hasAlt = (modifiers & Win32.MOD_ALT) != 0;
-                Console.WriteLine($"[Hotkey] Pressed: {registration.ActionName} (action={registration.Action}, slot={registration.SlotIndex}, shift={hasShift}, alt={hasAlt})");
-                HotkeyPressed?.Invoke(this, new HotkeyEventArgs(registration.Action, registration.SlotIndex, hasShift, hasAlt));
+                Console.WriteLine($"[Hotkey] Executing: {actionName}");
+                _commandRegistry.Execute(actionName);
                 handled = true;
             }
             else
@@ -110,114 +111,9 @@ public class HotkeyManager : IDisposable
         return result;
     }
 
-    private static HotkeyAction ParseActionName(string actionName, out int slotIndex)
-    {
-        slotIndex = -1;
-
-        // Handle numpad variants (e.g., "CopyToSlotNumpad1" -> same as "CopyToSlot1")
-        if (actionName.StartsWith("CopyToSlotNumpad"))
-        {
-            if (int.TryParse(actionName.AsSpan(16), out slotIndex))
-            {
-                slotIndex--; // Convert 1-based to 0-based
-                return HotkeyAction.CopyToSlot;
-            }
-        }
-        else if (actionName.StartsWith("CopyToSlot"))
-        {
-            if (int.TryParse(actionName.AsSpan(10), out slotIndex))
-            {
-                slotIndex--; // Convert 1-based to 0-based
-                return HotkeyAction.CopyToSlot;
-            }
-        }
-        else if (actionName.StartsWith("PasteFromSlotNumpad"))
-        {
-            if (int.TryParse(actionName.AsSpan(19), out slotIndex))
-            {
-                slotIndex--; // Convert 1-based to 0-based
-                return HotkeyAction.PasteFromSlot;
-            }
-        }
-        else if (actionName.StartsWith("PasteFromSlot"))
-        {
-            if (int.TryParse(actionName.AsSpan(13), out slotIndex))
-            {
-                slotIndex--; // Convert 1-based to 0-based
-                return HotkeyAction.PasteFromSlot;
-            }
-        }
-        else if (actionName.StartsWith("LockSlot"))
-        {
-            if (int.TryParse(actionName.AsSpan(8), out slotIndex))
-            {
-                slotIndex--;
-                return HotkeyAction.LockSlot;
-            }
-        }
-        else if (actionName.StartsWith("ClearSlot"))
-        {
-            if (int.TryParse(actionName.AsSpan(9), out slotIndex))
-            {
-                slotIndex--;
-                return HotkeyAction.ClearSlot;
-            }
-        }
-
-        return actionName switch
-        {
-            "ToggleHud" => HotkeyAction.ToggleHud,
-            "CycleForward" => HotkeyAction.CycleForward,
-            "CycleBackward" => HotkeyAction.CycleBackward,
-            "ClearAll" => HotkeyAction.ClearAll,
-            "PromoteTempSlot" => HotkeyAction.PromoteTempSlot,
-            "PasteFromActiveSlot" => HotkeyAction.PasteFromActiveSlot,
-            _ => HotkeyAction.None
-        };
-    }
-
     public void Dispose()
     {
         UnregisterAll();
         _hwndSource?.RemoveHook(WndProc);
     }
-}
-
-public class HotkeyEventArgs : EventArgs
-{
-    public HotkeyAction Action { get; }
-    public int SlotIndex { get; }
-    public bool HasShift { get; }
-    public bool HasAlt { get; }
-    public InputSource Source { get; }
-
-    public HotkeyEventArgs(HotkeyAction action, int slotIndex = -1, bool hasShift = false, bool hasAlt = false, InputSource source = InputSource.Keyboard)
-    {
-        Action = action;
-        SlotIndex = slotIndex;
-        HasShift = hasShift;
-        HasAlt = hasAlt;
-        Source = source;
-    }
-}
-
-public enum InputSource
-{
-    Keyboard,
-    Midi
-}
-
-public enum HotkeyAction
-{
-    None,
-    CopyToSlot,
-    PasteFromSlot,
-    PasteFromActiveSlot,
-    CycleForward,
-    CycleBackward,
-    ToggleHud,
-    LockSlot,
-    ClearSlot,
-    ClearAll,
-    PromoteTempSlot
 }

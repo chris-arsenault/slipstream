@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Threading;
+using Slipstream.Commands;
 using Slipstream.Models;
 using Slipstream.Services;
 using Slipstream.UI;
@@ -22,6 +23,8 @@ public partial class App : Application
     private KeyboardSequencer? _keyboardSequencer;
     private DispatcherTimer? _modifierCleanupTimer;
     private HashSet<string>? _stickyApps;
+    private CommandRegistry? _commandRegistry;
+    private CommandContext? _commandContext;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -48,9 +51,6 @@ public partial class App : Application
         _keyboardSequencer = new KeyboardSequencer(new KeyboardSimulator());
         _pasteEngine = new PasteEngine(_keyboardSequencer);
 
-        // Create HUD window
-        _hudWindow = new HudWindow(_slotManager, _configService, _settings);
-
         // Initialize clipboard monitor using message window
         _clipboardMonitor = new ClipboardMonitor(hwnd, hwndSource);
         _clipboardMonitor.ClipboardChanged += OnClipboardChanged;
@@ -58,15 +58,26 @@ public partial class App : Application
         // Connect paste engine to clipboard monitor so it can suppress capture during paste
         _pasteEngine.SetClipboardMonitor(_clipboardMonitor);
 
+        // Create HUD window
+        _hudWindow = new HudWindow(_slotManager, _configService, _settings);
+
+        // Initialize command system
+        _commandContext = new CommandContext(
+            _slotManager,
+            _clipboardMonitor,
+            _pasteEngine,
+            _keyboardSequencer,
+            _hudWindow,
+            _stickyApps);
+        _commandRegistry = new CommandRegistry(_commandContext);
+
         // Initialize hotkey manager using message window
-        _hotkeyManager = new HotkeyManager(hwnd, hwndSource);
-        _hotkeyManager.HotkeyPressed += OnHotkeyPressed;
+        _hotkeyManager = new HotkeyManager(hwnd, hwndSource, _commandRegistry);
         RegisterDefaultHotkeys(_settings);
 
         // Initialize MIDI manager with presets loaded from JSON config files
         _midiPresets = new MidiPresets(_configService);
-        _midiManager = new MidiManager(_settings.MidiSettings, _midiPresets);
-        _midiManager.ActionTriggered += OnHotkeyPressed; // Reuse same handler as keyboard!
+        _midiManager = new MidiManager(_settings.MidiSettings, _midiPresets, _commandRegistry);
         _midiManager.DeviceChanged += OnMidiDeviceChanged;
         _midiManager.Start();
 
@@ -146,86 +157,6 @@ public partial class App : Application
         _configService?.SaveSlotsDebounced(_slotManager!.GetAllSlots());
     }
 
-    private void CopySelectionToSlot(int slotIndex)
-    {
-        // Set the target slot BEFORE sending Ctrl+C
-        // The clipboard monitor will use this when WM_CLIPBOARDUPDATE arrives
-        _clipboardMonitor?.SetPendingTargetSlot(slotIndex);
-
-        // Send Ctrl+C to copy selection
-        SendCtrlC();
-    }
-
-    private void SendCtrlC()
-    {
-        _keyboardSequencer?.SendCopyWithModifierRelease();
-    }
-
-    private void OnHotkeyPressed(object? sender, HotkeyEventArgs e)
-    {
-        switch (e.Action)
-        {
-            case HotkeyAction.CopyToSlot:
-                // Send Ctrl+C then capture to specific slot
-                CopySelectionToSlot(e.SlotIndex);
-                break;
-
-            case HotkeyAction.PasteFromSlot:
-                // Paste from slot via clipboard + Ctrl+V
-                Console.WriteLine($"[App] PasteFromSlot triggered for slot {e.SlotIndex}, source={e.Source}");
-                var slot = _slotManager?.GetSlot(e.SlotIndex);
-                Console.WriteLine($"[App] Slot found: {slot != null}, HasContent: {slot?.HasContent}");
-                if (slot?.HasContent == true)
-                {
-                    Console.WriteLine($"[App] Pasting: Type={slot.Type}, Text={slot.TextContent?.Substring(0, Math.Min(50, slot.TextContent?.Length ?? 0))}...");
-                    // Run paste on background thread to avoid blocking message pump
-                    var slotToPaste = slot;
-                    Task.Run(() => _pasteEngine?.PasteFromSlot(slotToPaste));
-                }
-                break;
-
-            case HotkeyAction.CycleForward:
-                _slotManager?.CycleActiveSlot(1);
-                break;
-
-            case HotkeyAction.CycleBackward:
-                _slotManager?.CycleActiveSlot(-1);
-                break;
-
-            case HotkeyAction.ToggleHud:
-                if (_hudWindow?.IsVisible == true)
-                    _hudWindow.Hide();
-                else
-                    _hudWindow?.Show();
-                break;
-
-            case HotkeyAction.LockSlot:
-                _slotManager?.ToggleLock(e.SlotIndex);
-                break;
-
-            case HotkeyAction.ClearSlot:
-                _slotManager?.ClearSlot(e.SlotIndex);
-                break;
-
-            case HotkeyAction.PromoteTempSlot:
-                var promotedIndex = _slotManager?.PromoteTempSlot(_stickyApps);
-                Console.WriteLine($"[App] PromoteTempSlot: promoted to slot {promotedIndex}");
-                break;
-
-            case HotkeyAction.PasteFromActiveSlot:
-                var activeSlot = _slotManager?.GetSlot(_slotManager.ActiveSlotIndex);
-                Console.WriteLine($"[App] PasteFromActiveSlot triggered, activeIndex={_slotManager?.ActiveSlotIndex}, source={e.Source}");
-                if (activeSlot?.HasContent == true)
-                {
-                    Console.WriteLine($"[App] Pasting from active slot: Type={activeSlot.Type}");
-                    // Run paste on background thread to avoid blocking message pump
-                    var activeSlotToPaste = activeSlot;
-                    Task.Run(() => _pasteEngine?.PasteFromSlot(activeSlotToPaste));
-                }
-                break;
-        }
-    }
-
     private void OpenSettings()
     {
         var settingsWindow = new SettingsWindow(_configService!, _slotManager!, _hotkeyManager!, OnSettingsUpdated, _midiManager);
@@ -239,6 +170,12 @@ public partial class App : Application
 
         // Update sticky apps from settings
         _stickyApps = new HashSet<string>(settings.StickyApps, StringComparer.OrdinalIgnoreCase);
+
+        // Update command context with new sticky apps
+        if (_commandContext != null)
+        {
+            _commandContext.StickyApps = _stickyApps;
+        }
 
         // Update HUD theme when palette changes
         _hudWindow?.SetTheme(settings.ColorPalette);

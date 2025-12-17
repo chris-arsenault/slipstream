@@ -1,3 +1,4 @@
+using Slipstream.Content;
 using Slipstream.Models;
 
 namespace Slipstream.Services;
@@ -47,9 +48,14 @@ public class SlotManager
         _slotBehavior = behavior;
     }
 
+    /// <summary>
+    /// Checks if an index is within valid slot range.
+    /// </summary>
+    private bool IsValidIndex(int index) => index >= 0 && index < _slots.Count;
+
     public ClipboardSlot? GetSlot(int index)
     {
-        if (index < 0 || index >= _slots.Count)
+        if (!IsValidIndex(index))
             return null;
         return _slots[index];
     }
@@ -217,7 +223,7 @@ public class SlotManager
         if (!_tempSlot.HasContent)
             return false;
 
-        if (targetIndex < 0 || targetIndex >= _slots.Count)
+        if (!IsValidIndex(targetIndex))
             return false;
 
         var slot = _slots[targetIndex];
@@ -253,7 +259,7 @@ public class SlotManager
 
     public void CaptureToSlot(int index, object data, ClipboardType type)
     {
-        if (index < 0 || index >= _slots.Count)
+        if (!IsValidIndex(index))
             return;
 
         var slot = _slots[index];
@@ -292,27 +298,11 @@ public class SlotManager
 
     private static void CopySlotContent(ClipboardSlot source, ClipboardSlot target)
     {
-        target.Clear();
-        switch (source.Type)
-        {
-            case ClipboardType.Text:
-                target.SetText(source.TextContent ?? "");
-                break;
-            case ClipboardType.RichText:
-                target.SetRichText(source.TextContent ?? "", source.RichTextContent);
-                break;
-            case ClipboardType.Html:
-                target.SetHtml(source.TextContent ?? "", source.HtmlContent);
-                break;
-            case ClipboardType.Image:
-                if (source.ImageContent != null)
-                    target.SetImage(source.ImageContent);
-                break;
-            case ClipboardType.FileList:
-                if (source.FileListContent != null)
-                    target.SetFileList(source.FileListContent);
-                break;
-        }
+        var content = source.GetContent();
+        if (content != null)
+            target.SetContent(content);
+        else
+            target.Clear();
     }
 
     public void CycleActiveSlot(int direction)
@@ -329,7 +319,7 @@ public class SlotManager
 
     public void SetActiveSlot(int index)
     {
-        if (index < 0 || index >= _slots.Count)
+        if (!IsValidIndex(index))
             return;
 
         if (_activeSlotIndex != index)
@@ -341,7 +331,7 @@ public class SlotManager
 
     public void ToggleLock(int index)
     {
-        if (index < 0 || index >= _slots.Count)
+        if (!IsValidIndex(index))
             return;
 
         _slots[index].IsLocked = !_slots[index].IsLocked;
@@ -350,7 +340,7 @@ public class SlotManager
 
     public void ClearSlot(int index)
     {
-        if (index < 0 || index >= _slots.Count)
+        if (!IsValidIndex(index))
             return;
 
         var slot = _slots[index];

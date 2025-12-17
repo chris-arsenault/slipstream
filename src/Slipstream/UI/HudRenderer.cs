@@ -4,9 +4,8 @@ using Slipstream.Models;
 
 namespace Slipstream.UI;
 
-public class HudRenderer
+public class HudRenderer : BaseRenderer
 {
-    private ColorTheme _theme = ColorTheme.Dark;
 
     // Layout constants
     private const float CornerRadius = 12f;
@@ -27,75 +26,30 @@ public class HudRenderer
     private readonly Dictionary<int, SKBitmap?> _thumbnailCache = new();
     private readonly Dictionary<int, int> _thumbnailHashes = new(); // Track content hash to invalidate cache
 
-    // Pooled paints for performance
-    private readonly SKPaint _backgroundPaint;
+    // HudRenderer-specific paints (base class provides _backgroundPaint, _borderPaint)
     private readonly SKPaint _slotPaint;
     private readonly SKPaint _activeSlotPaint;
     private readonly SKPaint _tempSlotPaint;
     private readonly SKPaint _tempSlotBorderPaint;
-    private readonly SKPaint _textPaint;
-    private readonly SKPaint _secondaryTextPaint;
     private readonly SKPaint _indexPaint;
     private readonly SKPaint _typeGlyphPaint;
     private readonly SKPaint _lockIndicatorPaint;
-    private readonly SKPaint _borderPaint;
+    private readonly SKPaint _hudTextPaint;
+    private readonly SKPaint _hudSecondaryTextPaint;
 
     // Hit testing for temp slot promote button
     private SKRect _tempSlotPromoteRect;
 
-    public HudRenderer()
+    public HudRenderer() : base(ColorTheme.Dark)
     {
-        _backgroundPaint = new SKPaint
-        {
-            Color = _theme.Background,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
+        _slotPaint = CreateFillPaint(_theme.SlotBackground);
+        _activeSlotPaint = CreateFillPaint(_theme.SlotActive);
+        _tempSlotPaint = CreateFillPaint(_theme.Accent.WithAlpha(40));
+        _tempSlotBorderPaint = CreateStrokePaint(_theme.Accent, 2f);
 
-        _slotPaint = new SKPaint
-        {
-            Color = _theme.SlotBackground,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
-
-        _activeSlotPaint = new SKPaint
-        {
-            Color = _theme.SlotActive,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
-
-        _tempSlotPaint = new SKPaint
-        {
-            Color = _theme.Accent.WithAlpha(40),
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
-
-        _tempSlotBorderPaint = new SKPaint
-        {
-            Color = _theme.Accent,
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 2f
-        };
-
-        _textPaint = new SKPaint
-        {
-            Color = _theme.Text,
-            IsAntialias = true,
-            TextSize = 13f,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
-        };
-
-        _secondaryTextPaint = new SKPaint
-        {
-            Color = _theme.TextSecondary,
-            IsAntialias = true,
-            TextSize = 11f,
-            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
-        };
+        // HudRenderer uses slightly different text sizes than base class
+        _hudTextPaint = CreateTextPaint(_theme.Text, 13f);
+        _hudSecondaryTextPaint = CreateTextPaint(_theme.TextSecondary, 11f);
 
         _indexPaint = new SKPaint
         {
@@ -115,20 +69,7 @@ public class HudRenderer
             TextAlign = SKTextAlign.Center
         };
 
-        _lockIndicatorPaint = new SKPaint
-        {
-            Color = _theme.SlotLocked,
-            IsAntialias = true,
-            Style = SKPaintStyle.Fill
-        };
-
-        _borderPaint = new SKPaint
-        {
-            Color = _theme.Border,
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 1f
-        };
+        _lockIndicatorPaint = CreateFillPaint(_theme.SlotLocked);
     }
 
     public void SetTheme(ColorPalette palette)
@@ -137,19 +78,20 @@ public class HudRenderer
         UpdatePaintColors();
     }
 
-    private void UpdatePaintColors()
+    protected override void UpdatePaintColors()
     {
-        _backgroundPaint.Color = _theme.Background;
+        base.UpdatePaintColors();
+
+        // Update HudRenderer-specific paints
         _slotPaint.Color = _theme.SlotBackground;
         _activeSlotPaint.Color = _theme.SlotActive;
         _tempSlotPaint.Color = _theme.Accent.WithAlpha(40);
         _tempSlotBorderPaint.Color = _theme.Accent;
-        _textPaint.Color = _theme.Text;
-        _secondaryTextPaint.Color = _theme.TextSecondary;
+        _hudTextPaint.Color = _theme.Text;
+        _hudSecondaryTextPaint.Color = _theme.TextSecondary;
         _indexPaint.Color = _theme.TextSecondary;
         _typeGlyphPaint.Color = _theme.Accent;
         _lockIndicatorPaint.Color = _theme.SlotLocked;
-        _borderPaint.Color = _theme.Border;
     }
 
     public void Render(SKCanvas canvas, SKSize size, List<ClipboardSlot> slots, int activeSlotIndex, ClipboardSlot? tempSlot = null, float dpiScale = 1.0f, int nextRoundRobinIndex = -1, bool isRoundRobinMode = true)
@@ -291,12 +233,12 @@ public class HudRenderer
 
         if (slot.HasContent)
         {
-            var preview = TruncateToWidth(slot.Preview, previewWidth, _textPaint);
-            canvas.DrawText(preview, previewX, textY, _textPaint);
+            var preview = TruncateToWidth(slot.Preview, previewWidth, _hudTextPaint);
+            canvas.DrawText(preview, previewX, textY, _hudTextPaint);
         }
         else
         {
-            canvas.DrawText("Clipboard", previewX, textY, _secondaryTextPaint);
+            canvas.DrawText("Clipboard", previewX, textY, _hudSecondaryTextPaint);
         }
     }
 
@@ -405,13 +347,13 @@ public class HudRenderer
             }
             else
             {
-                var preview = TruncateToWidth(slot.Preview, previewWidth, _textPaint);
-                canvas.DrawText(preview, previewX, textY, _textPaint);
+                var preview = TruncateToWidth(slot.Preview, previewWidth, _hudTextPaint);
+                canvas.DrawText(preview, previewX, textY, _hudTextPaint);
             }
         }
         else
         {
-            canvas.DrawText("Empty", previewX, textY, _secondaryTextPaint);
+            canvas.DrawText("Empty", previewX, textY, _hudSecondaryTextPaint);
         }
     }
 
@@ -552,11 +494,11 @@ public class HudRenderer
 
         // Draw image dimensions text next to thumbnail
         float textX = x + thumbWidth + 6;
-        float textY = y + SlotHeight / 2 + _secondaryTextPaint.TextSize / 3;
+        float textY = y + SlotHeight / 2 + _hudSecondaryTextPaint.TextSize / 3;
 
         // Get original image dimensions (not thumbnail size)
         string dimText = GetImageDimensions(slot.ImageContent);
-        canvas.DrawText(dimText, textX, textY, _secondaryTextPaint);
+        canvas.DrawText(dimText, textX, textY, _hudSecondaryTextPaint);
     }
 
     private static string GetImageDimensions(byte[] imageData)
@@ -614,16 +556,23 @@ public class HudRenderer
         _thumbnailCache.Clear();
         _thumbnailHashes.Clear();
 
+        // Dispose base class paints
         _backgroundPaint.Dispose();
+        _titleBarPaint.Dispose();
+        _titlePaint.Dispose();
+        _textPaint.Dispose();
+        _secondaryTextPaint.Dispose();
+        _borderPaint.Dispose();
+
+        // Dispose HudRenderer-specific paints
         _slotPaint.Dispose();
         _activeSlotPaint.Dispose();
         _tempSlotPaint.Dispose();
         _tempSlotBorderPaint.Dispose();
-        _textPaint.Dispose();
-        _secondaryTextPaint.Dispose();
+        _hudTextPaint.Dispose();
+        _hudSecondaryTextPaint.Dispose();
         _indexPaint.Dispose();
         _typeGlyphPaint.Dispose();
         _lockIndicatorPaint.Dispose();
-        _borderPaint.Dispose();
     }
 }
