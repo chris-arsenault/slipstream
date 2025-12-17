@@ -13,6 +13,7 @@ public partial class SettingsWindow : Window
     private readonly ConfigService _configService;
     private readonly SlotManager _slotManager;
     private readonly HotkeyManager _hotkeyManager;
+    private readonly MidiManager? _midiManager;
     private readonly SettingsRenderer _renderer;
     private readonly Action<AppSettings>? _onSettingsChanged;
     private AppSettings _settings;
@@ -21,20 +22,31 @@ public partial class SettingsWindow : Window
     private string? _lastHoveredButton;
     private float _dpiScale = 1.0f;
 
-    public SettingsWindow(ConfigService configService, SlotManager slotManager, HotkeyManager hotkeyManager, Action<AppSettings>? onSettingsChanged = null)
+    public SettingsWindow(ConfigService configService, SlotManager slotManager, HotkeyManager hotkeyManager, Action<AppSettings>? onSettingsChanged = null, MidiManager? midiManager = null)
     {
         InitializeComponent();
         _configService = configService;
         _slotManager = slotManager;
         _hotkeyManager = hotkeyManager;
+        _midiManager = midiManager;
         _onSettingsChanged = onSettingsChanged;
         _settings = configService.LoadSettings();
-        _renderer = new SettingsRenderer(_settings);
+        _renderer = new SettingsRenderer(_settings, midiManager?.Presets);
 
         _renderer.CloseRequested += () => Close();
         _renderer.SettingsChanged += OnSettingsChanged;
         _renderer.ClearAllSlotsRequested += OnClearAllSlotsRequested;
         _renderer.ResetHotkeysRequested += OnResetHotkeysRequested;
+        _renderer.MidiDeviceSelected += OnMidiDeviceSelected;
+        _renderer.MidiPresetSelected += OnMidiPresetSelected;
+        _renderer.EditMidiPresetRequested += OnEditMidiPresetRequested;
+        _renderer.NewMidiPresetRequested += OnNewMidiPresetRequested;
+
+        // Subscribe to MIDI device changes for real-time updates
+        if (_midiManager != null)
+        {
+            _midiManager.DeviceChanged += OnMidiDeviceChanged;
+        }
 
         // Save position when window is moved
         LocationChanged += OnLocationChanged;
@@ -58,6 +70,9 @@ public partial class SettingsWindow : Window
             if (Left + Width > workArea.Right) Left = workArea.Right - Width;
             if (Top + Height > workArea.Bottom) Top = workArea.Bottom - Height;
         }
+
+        // Initialize MIDI state
+        UpdateMidiState();
     }
 
     private void OnLocationChanged(object? sender, EventArgs e)
@@ -99,6 +114,89 @@ public partial class SettingsWindow : Window
 
         // Force redraw
         SkiaCanvas.InvalidateVisual();
+    }
+
+    private void UpdateMidiState()
+    {
+        if (_midiManager == null)
+        {
+            _renderer.UpdateMidiState(Array.Empty<string>(), null, false);
+            return;
+        }
+
+        var devices = _midiManager.GetAvailableDevices();
+        var currentDevice = _midiManager.CurrentDevice;
+        var isConnected = _midiManager.IsActive;
+
+        _renderer.UpdateMidiState(devices, currentDevice, isConnected);
+        SkiaCanvas.InvalidateVisual();
+    }
+
+    private void OnMidiDeviceSelected(string deviceName)
+    {
+        if (_midiManager == null) return;
+
+        _midiManager.SelectDevice(deviceName);
+        _settings.MidiSettings.DeviceName = deviceName;
+        _configService.SaveSettings(_settings);
+        _onSettingsChanged?.Invoke(_settings);
+        UpdateMidiState();
+    }
+
+    private void OnMidiPresetSelected(string presetName)
+    {
+        // Settings are already saved by the renderer, just apply to MidiManager
+        _midiManager?.ApplySettings(_settings.MidiSettings);
+    }
+
+    private void OnEditMidiPresetRequested()
+    {
+        if (_midiManager == null) return;
+
+        // Get current preset to edit
+        var currentPreset = _midiManager.Presets.GetPreset(_settings.MidiSettings.ActivePreset);
+
+        var editorWindow = new MidiEditorWindow(
+            _midiManager,
+            _midiManager.Presets,
+            _configService,
+            currentPreset,
+            OnMidiPresetEditorClosed
+        );
+        editorWindow.Owner = this;
+        editorWindow.ShowDialog();
+    }
+
+    private void OnNewMidiPresetRequested()
+    {
+        if (_midiManager == null) return;
+
+        var editorWindow = new MidiEditorWindow(
+            _midiManager,
+            _midiManager.Presets,
+            _configService,
+            null, // null = create new preset
+            OnMidiPresetEditorClosed
+        );
+        editorWindow.Owner = this;
+        editorWindow.ShowDialog();
+    }
+
+    private void OnMidiPresetEditorClosed()
+    {
+        // Reload presets after editor closes
+        _midiManager?.Presets.Reload();
+        _midiManager?.ApplySettings(_settings.MidiSettings);
+        SkiaCanvas.InvalidateVisual();
+    }
+
+    private void OnMidiDeviceChanged(object? sender, MidiDeviceEventArgs e)
+    {
+        // Update UI on the UI thread
+        Dispatcher.Invoke(() =>
+        {
+            UpdateMidiState();
+        });
     }
 
     private void SkiaCanvas_PaintSurface(object sender, SKPaintSurfaceEventArgs e)
@@ -159,6 +257,35 @@ public partial class SettingsWindow : Window
             _lastHoveredButton = newHovered;
             _renderer.HandleMouseMove(_lastMousePosition);
             SkiaCanvas.InvalidateVisual();
+        }
+    }
+
+    protected override void OnTextInput(TextCompositionEventArgs e)
+    {
+        base.OnTextInput(e);
+
+        if (_renderer.IsStickyAppInputFocused && !string.IsNullOrEmpty(e.Text))
+        {
+            _renderer.HandleTextInput(e.Text);
+            SkiaCanvas.InvalidateVisual();
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+
+        if (_renderer.IsStickyAppInputFocused)
+        {
+            _renderer.HandleKeyDown(e.Key);
+            SkiaCanvas.InvalidateVisual();
+
+            // Handle these keys to prevent them from doing other things
+            if (e.Key == Key.Back || e.Key == Key.Enter || e.Key == Key.Escape)
+            {
+                e.Handled = true;
+            }
         }
     }
 }

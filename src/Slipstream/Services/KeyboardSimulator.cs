@@ -26,11 +26,23 @@ public class KeyboardSimulator : IKeyboardSimulator
     {
         return Win32.IsKeyPhysicallyDown(virtualKey);
     }
+
+    public byte[]? GetKeyboardState()
+    {
+        var state = new byte[256];
+        return Win32.GetKeyboardState(state) ? state : null;
+    }
+
+    public void SetKeyboardState(byte[] state)
+    {
+        Win32.SetKeyboardState(state);
+    }
 }
 
 /// <summary>
 /// Generates keyboard sequences for copy/paste operations.
-/// Handles modifier key state management to work correctly when user is holding hotkey modifiers.
+/// Uses snapshot/restore approach: captures modifier state before operation,
+/// clears modifiers, performs operation, then restores original state.
 /// </summary>
 public class KeyboardSequencer
 {
@@ -43,13 +55,16 @@ public class KeyboardSequencer
     public const byte VK_C = 0x43;
     public const byte VK_V = 0x56;
 
-    // Virtual key codes - left/right specific (for physical state detection)
+    // Virtual key codes - left/right specific (for physical state detection and release)
     public const byte VK_LCONTROL = 0xA2;
     public const byte VK_RCONTROL = 0xA3;
     public const byte VK_LSHIFT = 0xA0;
     public const byte VK_RSHIFT = 0xA1;
     public const byte VK_LMENU = 0xA4; // Left Alt
     public const byte VK_RMENU = 0xA5; // Right Alt
+
+    // Modifier key indices for keyboard state array (high bit = key down)
+    private static readonly byte[] ModifierKeys = { VK_CONTROL, VK_SHIFT, VK_MENU, VK_LCONTROL, VK_RCONTROL, VK_LSHIFT, VK_RSHIFT, VK_LMENU, VK_RMENU };
 
     public KeyboardSequencer(IKeyboardSimulator simulator)
     {
@@ -58,102 +73,75 @@ public class KeyboardSequencer
 
     /// <summary>
     /// Sends Ctrl+C to copy selection.
-    /// Releases Ctrl+Alt modifiers first (user may be holding them from hotkey),
-    /// sends clean Ctrl+C, then re-presses Ctrl+Alt (the copy hotkey modifiers).
+    /// Snapshots current modifier state, clears modifiers, sends Ctrl+C, restores state.
     /// </summary>
     public void SendCopyWithModifierRelease()
     {
-        // Release any held modifiers first - both generic and left/right specific
-        ReleaseAllModifiers();
+        // Snapshot which modifiers are physically held
+        var heldModifiers = SnapshotHeldModifiers();
 
+        // Release all modifiers
+        ReleaseAllModifiers();
         _simulator.Sleep(5);
 
-        // Now send clean Ctrl+C
+        // Send clean Ctrl+C
         _simulator.KeyDown(VK_CONTROL);
         _simulator.KeyDown(VK_C);
         _simulator.KeyUp(VK_C);
         _simulator.KeyUp(VK_CONTROL);
 
-        // Re-press the modifiers that were used for the copy hotkey (Ctrl+Alt)
-        // We always do this because GetAsyncKeyState can't reliably detect physical state
-        // after we've sent synthetic key-up events
-        _simulator.KeyDown(VK_CONTROL);
-        _simulator.KeyDown(VK_MENU);
+        // Restore modifiers that were physically held
+        RestoreModifiers(heldModifiers);
     }
 
     /// <summary>
     /// Sends Ctrl+V to paste.
-    /// Releases modifiers first (user may be holding them from hotkey),
-    /// sends clean Ctrl+V, then re-presses the specified hotkey modifiers.
+    /// Snapshots current modifier state, clears modifiers, sends Ctrl+V, restores state.
     /// </summary>
-    /// <param name="hotkeyHasShift">Whether the hotkey that triggered this paste included Shift</param>
-    /// <param name="hotkeyHasAlt">Whether the hotkey that triggered this paste included Alt</param>
-    public void SendPasteWithModifierRelease(bool hotkeyHasShift = true, bool hotkeyHasAlt = false)
+    public void SendPasteWithModifierRelease()
     {
-        // Release any held modifiers first - both generic and left/right specific
-        ReleaseAllModifiers();
+        // Snapshot which modifiers are physically held
+        var heldModifiers = SnapshotHeldModifiers();
 
+        // Release all modifiers
+        ReleaseAllModifiers();
         _simulator.Sleep(5);
 
-        // Now send clean Ctrl+V
+        // Send clean Ctrl+V
         _simulator.KeyDown(VK_CONTROL);
         _simulator.KeyDown(VK_V);
         _simulator.KeyUp(VK_V);
         _simulator.KeyUp(VK_CONTROL);
 
-        // Re-press the modifiers that were used for the paste hotkey
-        // We always do this because GetAsyncKeyState can't reliably detect physical state
-        // after we've sent synthetic key-up events
-        _simulator.KeyDown(VK_CONTROL);
-        if (hotkeyHasShift)
-            _simulator.KeyDown(VK_SHIFT);
-        if (hotkeyHasAlt)
-            _simulator.KeyDown(VK_MENU);
+        // Restore modifiers that were physically held
+        RestoreModifiers(heldModifiers);
     }
 
     /// <summary>
-    /// Checks if either left or right variant of Control is physically held.
+    /// Captures which modifier keys are currently physically held down.
     /// </summary>
-    private bool IsControlPhysicallyDown()
+    private ModifierSnapshot SnapshotHeldModifiers()
     {
-        return _simulator.IsKeyPhysicallyDown(VK_LCONTROL) ||
-               _simulator.IsKeyPhysicallyDown(VK_RCONTROL) ||
-               _simulator.IsKeyPhysicallyDown(VK_CONTROL);
+        return new ModifierSnapshot
+        {
+            Control = _simulator.IsKeyPhysicallyDown(VK_LCONTROL) || _simulator.IsKeyPhysicallyDown(VK_RCONTROL) || _simulator.IsKeyPhysicallyDown(VK_CONTROL),
+            Shift = _simulator.IsKeyPhysicallyDown(VK_LSHIFT) || _simulator.IsKeyPhysicallyDown(VK_RSHIFT) || _simulator.IsKeyPhysicallyDown(VK_SHIFT),
+            Alt = _simulator.IsKeyPhysicallyDown(VK_LMENU) || _simulator.IsKeyPhysicallyDown(VK_RMENU) || _simulator.IsKeyPhysicallyDown(VK_MENU)
+        };
     }
 
     /// <summary>
-    /// Checks if either left or right variant of Shift is physically held.
+    /// Re-presses modifiers that were held before the operation.
     /// </summary>
-    private bool IsShiftPhysicallyDown()
+    private void RestoreModifiers(ModifierSnapshot snapshot)
     {
-        return _simulator.IsKeyPhysicallyDown(VK_LSHIFT) ||
-               _simulator.IsKeyPhysicallyDown(VK_RSHIFT) ||
-               _simulator.IsKeyPhysicallyDown(VK_SHIFT);
-    }
-
-    /// <summary>
-    /// Checks if either left or right variant of Alt is physically held.
-    /// </summary>
-    private bool IsAltPhysicallyDown()
-    {
-        return _simulator.IsKeyPhysicallyDown(VK_LMENU) ||
-               _simulator.IsKeyPhysicallyDown(VK_RMENU) ||
-               _simulator.IsKeyPhysicallyDown(VK_MENU);
-    }
-
-    /// <summary>
-    /// Re-presses modifier keys that are still physically held by the user.
-    /// This allows chaining operations (e.g., Ctrl+Shift+1 then Ctrl+Shift+2).
-    /// </summary>
-    private void RestorePhysicallyHeldModifiers()
-    {
-        if (IsControlPhysicallyDown())
+        if (snapshot.Control)
             _simulator.KeyDown(VK_CONTROL);
 
-        if (IsShiftPhysicallyDown())
+        if (snapshot.Shift)
             _simulator.KeyDown(VK_SHIFT);
 
-        if (IsAltPhysicallyDown())
+        if (snapshot.Alt)
             _simulator.KeyDown(VK_MENU);
     }
 
@@ -185,25 +173,36 @@ public class KeyboardSequencer
     /// </summary>
     public void CleanupStuckModifiers()
     {
-        if (!IsControlPhysicallyDown())
+        bool ctrlHeld = _simulator.IsKeyPhysicallyDown(VK_LCONTROL) || _simulator.IsKeyPhysicallyDown(VK_RCONTROL) || _simulator.IsKeyPhysicallyDown(VK_CONTROL);
+        bool shiftHeld = _simulator.IsKeyPhysicallyDown(VK_LSHIFT) || _simulator.IsKeyPhysicallyDown(VK_RSHIFT) || _simulator.IsKeyPhysicallyDown(VK_SHIFT);
+        bool altHeld = _simulator.IsKeyPhysicallyDown(VK_LMENU) || _simulator.IsKeyPhysicallyDown(VK_RMENU) || _simulator.IsKeyPhysicallyDown(VK_MENU);
+
+        if (!ctrlHeld)
         {
             _simulator.KeyUp(VK_CONTROL);
             _simulator.KeyUp(VK_LCONTROL);
             _simulator.KeyUp(VK_RCONTROL);
         }
 
-        if (!IsShiftPhysicallyDown())
+        if (!shiftHeld)
         {
             _simulator.KeyUp(VK_SHIFT);
             _simulator.KeyUp(VK_LSHIFT);
             _simulator.KeyUp(VK_RSHIFT);
         }
 
-        if (!IsAltPhysicallyDown())
+        if (!altHeld)
         {
             _simulator.KeyUp(VK_MENU);
             _simulator.KeyUp(VK_LMENU);
             _simulator.KeyUp(VK_RMENU);
         }
+    }
+
+    private struct ModifierSnapshot
+    {
+        public bool Control;
+        public bool Shift;
+        public bool Alt;
     }
 }

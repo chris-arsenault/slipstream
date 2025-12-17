@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  VERSION: "1.0.0"
+  VERSION: "1.1.0"
 
 permissions:
   contents: write
@@ -34,11 +34,11 @@ jobs:
 
       - name: Publish Standalone
         if: github.event_name == 'push'
-        run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:Version=${{ env.VERSION }} -o publish/standalone
+        run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:Version=${{ env.VERSION }} -o publish/standalone
 
       - name: Publish Installer Build
         if: github.event_name == 'push'
-        run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained -p:Version=${{ env.VERSION }} -o publish/installer-build
+        run: dotnet publish src/Slipstream/Slipstream.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:Version=${{ env.VERSION }} -o publish/installer-build
 
       - name: Install NSIS
         if: github.event_name == 'push'
@@ -78,8 +78,32 @@ jobs:
 
           !define UNINSTALL_REG_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\`${PRODUCT_NAME}"
 
+          ; Check for .NET 8 Desktop Runtime
+          Function CheckDotNet8
+            ; Check for .NET 8.x Desktop Runtime in registry
+            ReadRegStr `$0 HKLM "SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App" "8.0.0"
+            StrCmp `$0 "" checkOtherVersions dotnetFound
+
+            checkOtherVersions:
+            ; Check for any 8.x version
+            EnumRegKey `$1 HKLM "SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App" 0
+            StrCmp `$1 "" noDotNet
+            StrCpy `$2 `$1 2 ; Get first 2 chars
+            StrCmp `$2 "8." dotnetFound
+            Goto noDotNet
+
+            noDotNet:
+            MessageBox MB_YESNO|MB_ICONEXCLAMATION "Slipstream requires .NET 8 Desktop Runtime which was not detected.$\n$\nWould you like to open the download page?$\n$\nClick Yes to open the download page, or No to continue anyway." IDNO dotnetFound
+            ExecShell "open" "https://dotnet.microsoft.com/en-us/download/dotnet/8.0"
+            Abort
+
+            dotnetFound:
+          FunctionEnd
+
           ; Check if app is running and prompt to close
           Function .onInit
+            Call CheckDotNet8
+
             FindWindow `$0 "" "Slipstream"
             StrCmp `$0 0 notRunning
               MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "Slipstream is currently running.$\n$\nClick OK to close it and continue, or Cancel to abort." IDOK closeApp

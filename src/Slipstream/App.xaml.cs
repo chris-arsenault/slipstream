@@ -16,9 +16,12 @@ public partial class App : Application
     private SlotManager? _slotManager;
     private ClipboardMonitor? _clipboardMonitor;
     private HotkeyManager? _hotkeyManager;
+    private MidiPresets? _midiPresets;
+    private MidiManager? _midiManager;
     private PasteEngine? _pasteEngine;
     private KeyboardSequencer? _keyboardSequencer;
     private DispatcherTimer? _modifierCleanupTimer;
+    private HashSet<string>? _stickyApps;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -39,6 +42,9 @@ public partial class App : Application
         _slotManager = new SlotManager(slots, _settings.SlotCount, _settings.SlotBehavior);
         _slotManager.SlotChanged += OnSlotChanged;
 
+        // Initialize sticky apps from settings (case-insensitive)
+        _stickyApps = new HashSet<string>(_settings.StickyApps, StringComparer.OrdinalIgnoreCase);
+
         _keyboardSequencer = new KeyboardSequencer(new KeyboardSimulator());
         _pasteEngine = new PasteEngine(_keyboardSequencer);
 
@@ -56,6 +62,13 @@ public partial class App : Application
         _hotkeyManager = new HotkeyManager(hwnd, hwndSource);
         _hotkeyManager.HotkeyPressed += OnHotkeyPressed;
         RegisterDefaultHotkeys(_settings);
+
+        // Initialize MIDI manager with presets loaded from JSON config files
+        _midiPresets = new MidiPresets(_configService);
+        _midiManager = new MidiManager(_settings.MidiSettings, _midiPresets);
+        _midiManager.ActionTriggered += OnHotkeyPressed; // Reuse same handler as keyboard!
+        _midiManager.DeviceChanged += OnMidiDeviceChanged;
+        _midiManager.Start();
 
         // Initialize tray
         _trayManager = new TrayManager(
@@ -114,12 +127,12 @@ public partial class App : Application
         else
         {
             // Normal Ctrl+C or external clipboard change - goes to temp slot
-            _slotManager.CaptureToTempSlot(e.Data, e.Type);
+            _slotManager.CaptureToTempSlot(e.Data, e.Type, e.SourceProcessName);
 
             // Auto-promote if enabled
             if (_settings?.AutoPromote == true)
             {
-                var promotedIndex = _slotManager.PromoteTempSlot();
+                var promotedIndex = _slotManager.PromoteTempSlot(_stickyApps);
                 Console.WriteLine($"[App] AutoPromote: promoted to slot {promotedIndex}");
             }
         }
@@ -158,19 +171,16 @@ public partial class App : Application
                 break;
 
             case HotkeyAction.PasteFromSlot:
-                // Directly inject text from slot (no clipboard involved for text)
-                Console.WriteLine($"[App] PasteFromSlot triggered for slot {e.SlotIndex}, shift={e.HasShift}, alt={e.HasAlt}");
+                // Paste from slot via clipboard + Ctrl+V
+                Console.WriteLine($"[App] PasteFromSlot triggered for slot {e.SlotIndex}, source={e.Source}");
                 var slot = _slotManager?.GetSlot(e.SlotIndex);
                 Console.WriteLine($"[App] Slot found: {slot != null}, HasContent: {slot?.HasContent}");
                 if (slot?.HasContent == true)
                 {
                     Console.WriteLine($"[App] Pasting: Type={slot.Type}, Text={slot.TextContent?.Substring(0, Math.Min(50, slot.TextContent?.Length ?? 0))}...");
                     // Run paste on background thread to avoid blocking message pump
-                    // This allows subsequent hotkeys to be received during paste
                     var slotToPaste = slot;
-                    bool hasShift = e.HasShift;
-                    bool hasAlt = e.HasAlt;
-                    Task.Run(() => _pasteEngine?.PasteFromSlot(slotToPaste, hasShift, hasAlt));
+                    Task.Run(() => _pasteEngine?.PasteFromSlot(slotToPaste));
                 }
                 break;
 
@@ -198,21 +208,19 @@ public partial class App : Application
                 break;
 
             case HotkeyAction.PromoteTempSlot:
-                var promotedIndex = _slotManager?.PromoteTempSlot();
+                var promotedIndex = _slotManager?.PromoteTempSlot(_stickyApps);
                 Console.WriteLine($"[App] PromoteTempSlot: promoted to slot {promotedIndex}");
                 break;
 
             case HotkeyAction.PasteFromActiveSlot:
                 var activeSlot = _slotManager?.GetSlot(_slotManager.ActiveSlotIndex);
-                Console.WriteLine($"[App] PasteFromActiveSlot triggered, activeIndex={_slotManager?.ActiveSlotIndex}, shift={e.HasShift}, alt={e.HasAlt}");
+                Console.WriteLine($"[App] PasteFromActiveSlot triggered, activeIndex={_slotManager?.ActiveSlotIndex}, source={e.Source}");
                 if (activeSlot?.HasContent == true)
                 {
                     Console.WriteLine($"[App] Pasting from active slot: Type={activeSlot.Type}");
                     // Run paste on background thread to avoid blocking message pump
                     var activeSlotToPaste = activeSlot;
-                    bool activeHasShift = e.HasShift;
-                    bool activeHasAlt = e.HasAlt;
-                    Task.Run(() => _pasteEngine?.PasteFromSlot(activeSlotToPaste, activeHasShift, activeHasAlt));
+                    Task.Run(() => _pasteEngine?.PasteFromSlot(activeSlotToPaste));
                 }
                 break;
         }
@@ -220,7 +228,7 @@ public partial class App : Application
 
     private void OpenSettings()
     {
-        var settingsWindow = new SettingsWindow(_configService!, _slotManager!, _hotkeyManager!, OnSettingsUpdated);
+        var settingsWindow = new SettingsWindow(_configService!, _slotManager!, _hotkeyManager!, OnSettingsUpdated, _midiManager);
         settingsWindow.Show();
     }
 
@@ -229,8 +237,30 @@ public partial class App : Application
         // Update our local settings reference so AutoPromote works
         _settings = settings;
 
+        // Update sticky apps from settings
+        _stickyApps = new HashSet<string>(settings.StickyApps, StringComparer.OrdinalIgnoreCase);
+
         // Update HUD theme when palette changes
         _hudWindow?.SetTheme(settings.ColorPalette);
+
+        // Update MIDI manager with new settings
+        _midiManager?.ApplySettings(settings.MidiSettings);
+    }
+
+    private void OnMidiDeviceChanged(object? sender, MidiDeviceEventArgs e)
+    {
+        if (e.IsConnected)
+        {
+            Console.WriteLine($"[App] MIDI device connected: {e.DeviceName}");
+        }
+        else if (e.DeviceName != null)
+        {
+            Console.WriteLine($"[App] MIDI device disconnected: {e.DeviceName}");
+        }
+        else if (e.ErrorMessage != null)
+        {
+            Console.WriteLine($"[App] MIDI error: {e.ErrorMessage}");
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -242,6 +272,7 @@ public partial class App : Application
         _keyboardSequencer?.ReleaseAllModifiers();
 
         // Clean shutdown
+        _midiManager?.Dispose();
         _hotkeyManager?.Dispose();
         _clipboardMonitor?.Dispose();
         _trayManager?.Dispose();

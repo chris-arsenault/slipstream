@@ -6,10 +6,10 @@
 
 A lightweight, high-performance clipboard manager for Windows that gives you superpowers without getting in your way.
 
-**👉 [Download Slipstream](https://github.com/chris-arsenault/slipstream/releases/latest)** — grab the installer or portable exe and start using it in seconds.
+**[Download Slipstream](https://github.com/chris-arsenault/slipstream/releases/latest)** — grab the installer or portable exe and start using it in seconds.
 
 <p align="center">
-  <img src="demo.gif" alt="Slipstream Demo" width="600">
+  <img src="docs/imgs/demo.gif" alt="Slipstream Demo" width="600">
 </p>
 
 ## Why Slipstream?
@@ -42,14 +42,56 @@ The temp slot is your clipboard's short-term memory. Numbered slots are for thin
 
 ## The HUD
 
+<p align="center">
+  <img src="docs/imgs/hud.png" alt="Slipstream HUD" width="300">
+</p>
+
 Toggle the HUD via system tray or `Ctrl+Alt+H`. It shows:
 
 - **T** (Temp slot) - What you last copied, with a promote button
 - **1-10** - Your numbered slots with content previews
 - **Lock icons** - Click to protect slots from being overwritten
 - **Arrow indicator** - Shows which slot will receive the next promotion (in Round Robin mode)
+- **Image thumbnails** - Visual preview of copied images with dimensions
 
 The HUD stays out of your way—drag it anywhere, and it remembers its position.
+
+## MIDI Controller Support
+
+<p align="center">
+  <img src="docs/imgs/midi.png" alt="MIDI Editor" width="500">
+</p>
+
+Slipstream supports MIDI controllers for hands-free clipboard management. Map any MIDI note to paste, copy, or control actions.
+
+**Features:**
+- Visual piano keyboard editor for creating custom mappings
+- Preset support for popular controllers (Launchkey Mini, etc.)
+- Real-time MIDI input visualization
+- **Copy Modifier** - Hold one key to transform paste actions into copy actions
+
+**Setup:**
+1. Open Settings > MIDI section
+2. Select your MIDI device from the dropdown
+3. Choose a preset or click "New" to create custom mappings
+4. Map notes to actions: Paste/Copy slots 1-10, Toggle HUD, Cycle slots, and more
+
+## Settings
+
+<p align="center">
+  <img src="docs/imgs/settings.png" alt="Settings Window" width="400">
+</p>
+
+Right-click the tray icon and select Settings to configure:
+
+- **Slot Behavior** - Auto-promote and Round Robin vs Fixed mode
+- **Startup** - Launch with Windows, start minimized
+- **HUD** - Show on startup, click-through mode
+- **Appearance** - Choose from Dark, Light, or Terminal themes
+- **MIDI** - Device selection and preset management
+- **Data** - Clear all slots, reset hotkeys
+
+Settings and window positions are saved automatically.
 
 ## Slot Behavior Modes
 
@@ -61,24 +103,12 @@ The HUD stays out of your way—drag it anywhere, and it remembers its position.
 
 Enable this in settings if you want every clipboard copy to automatically save to a numbered slot. Combined with Round Robin mode, this gives you a classic clipboard history that keeps your last 10 copies.
 
-## Settings
-
-Right-click the tray icon and select Settings to configure:
-
-- **Slot Behavior** - Auto-promote and Round Robin vs Fixed mode
-- **Startup** - Launch with Windows, start minimized
-- **HUD** - Show on startup, click-through mode
-- **Appearance** - Choose from Dark, Light, or Terminal themes
-- **Data** - Clear all slots
-
-Settings and window positions are saved automatically.
-
 ## Supported Content Types
 
 - Plain text
 - Rich text (RTF)
 - HTML
-- Images
+- Images (with thumbnail preview)
 - File lists
 
 Slipstream preserves formatting when pasting rich content.
@@ -112,6 +142,7 @@ dotnet test
 
 - **.NET 8** / WPF (windowing only)
 - **SkiaSharp** for all UI rendering
+- **NAudio** for MIDI controller support
 - Windows clipboard APIs via P/Invoke
 - Zero external runtime dependencies
 
@@ -122,3 +153,7 @@ MIT License - See [LICENSE](LICENSE) for details.
 ---
 
 *Slipstream is designed to be invisible until you need it. No bloat, no subscriptions, no cloud sync, no telemetry. Just a clipboard that actually works for you.*
+
+<p align="center">
+  <img src="docs/imgs/tsonu-combined.png" alt="tsonu" width="100">
+</p>

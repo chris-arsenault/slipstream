@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -77,6 +78,9 @@ public class ClipboardMonitor : IDisposable
     {
         try
         {
+            // Get the source process name before reading content
+            var sourceProcess = GetClipboardOwnerProcessName();
+
             var (data, type) = GetClipboardContent();
             if (type != ClipboardType.Empty && data != null)
             {
@@ -84,12 +88,33 @@ public class ClipboardMonitor : IDisposable
                 int? targetSlot = _pendingTargetSlot;
                 _pendingTargetSlot = null; // Clear it after use
 
-                ClipboardChanged?.Invoke(this, new ClipboardChangedEventArgs(data, type, targetSlot));
+                ClipboardChanged?.Invoke(this, new ClipboardChangedEventArgs(data, type, targetSlot, sourceProcess));
             }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Error capturing clipboard: {ex.Message}");
+        }
+    }
+
+    private static string? GetClipboardOwnerProcessName()
+    {
+        try
+        {
+            var ownerHwnd = Win32.GetClipboardOwner();
+            if (ownerHwnd == IntPtr.Zero)
+                return null;
+
+            Win32.GetWindowThreadProcessId(ownerHwnd, out uint processId);
+            if (processId == 0)
+                return null;
+
+            using var process = Process.GetProcessById((int)processId);
+            return process?.ProcessName;
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -191,11 +216,13 @@ public class ClipboardChangedEventArgs : EventArgs
     public object Data { get; }
     public ClipboardType Type { get; }
     public int? TargetSlotIndex { get; }
+    public string? SourceProcessName { get; }
 
-    public ClipboardChangedEventArgs(object data, ClipboardType type, int? targetSlotIndex = null)
+    public ClipboardChangedEventArgs(object data, ClipboardType type, int? targetSlotIndex = null, string? sourceProcessName = null)
     {
         Data = data;
         Type = type;
         TargetSlotIndex = targetSlotIndex;
+        SourceProcessName = sourceProcessName;
     }
 }

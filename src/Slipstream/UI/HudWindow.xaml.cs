@@ -16,6 +16,7 @@ public partial class HudWindow : Window
     private readonly HudRenderer _renderer;
     private readonly ConfigService _configService;
     private readonly AppSettings _settings;
+    private readonly HashSet<string> _stickyApps;
 
     public HudWindow(SlotManager slotManager, ConfigService configService, AppSettings settings)
     {
@@ -24,6 +25,7 @@ public partial class HudWindow : Window
         _configService = configService;
         _settings = settings;
         _renderer = new HudRenderer();
+        _stickyApps = new HashSet<string>(settings.StickyApps, StringComparer.OrdinalIgnoreCase);
 
         // Apply initial theme from settings
         _renderer.SetTheme(settings.ColorPalette);
@@ -148,7 +150,7 @@ public partial class HudWindow : Window
         // Check if click is on temp slot promote button
         if (_renderer.HitTestTempSlotPromote(skX, skY))
         {
-            _slotManager.PromoteTempSlot();
+            _slotManager.PromoteTempSlot(_stickyApps);
             e.Handled = true;
             return;
         }

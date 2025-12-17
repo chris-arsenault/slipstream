@@ -14,6 +14,7 @@ public class ConfigService
 
     private static readonly string SettingsPath = Path.Combine(AppDataPath, "config.json");
     private static readonly string SlotsPath = Path.Combine(AppDataPath, "slots.json");
+    private static readonly string MidiPresetsPath = Path.Combine(AppDataPath, "midi-presets");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -29,6 +30,7 @@ public class ConfigService
     public ConfigService()
     {
         EnsureDirectoryExists();
+        EnsureDefaultMidiPresets();
     }
 
     private static void EnsureDirectoryExists()
@@ -36,6 +38,10 @@ public class ConfigService
         if (!Directory.Exists(AppDataPath))
         {
             Directory.CreateDirectory(AppDataPath);
+        }
+        if (!Directory.Exists(MidiPresetsPath))
+        {
+            Directory.CreateDirectory(MidiPresetsPath);
         }
     }
 
@@ -203,4 +209,145 @@ public class ConfigService
         settings.HotkeyBindings = new Dictionary<string, HotkeyBinding>(defaults.HotkeyBindings);
         SaveSettings(settings);
     }
+
+    #region MIDI Presets
+
+    /// <summary>
+    /// Ensures default MIDI presets exist (creates if missing, does not overwrite)
+    /// </summary>
+    private void EnsureDefaultMidiPresets()
+    {
+        var defaultPresets = MidiPresetDefaults.GetAllDefaults();
+        foreach (var preset in defaultPresets)
+        {
+            var filePath = GetPresetFilePath(preset.Name);
+            if (!File.Exists(filePath))
+            {
+                SaveMidiPreset(preset);
+                Console.WriteLine($"[Config] Created default MIDI preset: {preset.Name}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the file path for a MIDI preset by name
+    /// </summary>
+    private static string GetPresetFilePath(string presetName)
+    {
+        // Sanitize name for filesystem
+        var safeName = string.Join("_", presetName.Split(Path.GetInvalidFileNameChars()));
+        return Path.Combine(MidiPresetsPath, $"{safeName}.json");
+    }
+
+    /// <summary>
+    /// Loads all available MIDI presets from the presets directory
+    /// </summary>
+    public List<MidiControlScheme> LoadAllMidiPresets()
+    {
+        var presets = new List<MidiControlScheme>();
+
+        try
+        {
+            var files = Directory.GetFiles(MidiPresetsPath, "*.json");
+            foreach (var file in files)
+            {
+                try
+                {
+                    var json = File.ReadAllText(file);
+                    var preset = JsonSerializer.Deserialize<MidiControlScheme>(json, JsonOptions);
+                    if (preset != null && !string.IsNullOrEmpty(preset.Name))
+                    {
+                        presets.Add(preset);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Config] Failed to load MIDI preset from {file}: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Config] Error reading MIDI presets directory: {ex.Message}");
+        }
+
+        // Sort alphabetically by name
+        presets.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+
+        return presets;
+    }
+
+    /// <summary>
+    /// Loads a specific MIDI preset by name
+    /// </summary>
+    public MidiControlScheme? LoadMidiPreset(string presetName)
+    {
+        var filePath = GetPresetFilePath(presetName);
+        if (!File.Exists(filePath))
+        {
+            Console.WriteLine($"[Config] MIDI preset not found: {presetName}");
+            return null;
+        }
+
+        try
+        {
+            var json = File.ReadAllText(filePath);
+            return JsonSerializer.Deserialize<MidiControlScheme>(json, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Config] Error loading MIDI preset {presetName}: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Saves a MIDI preset to a JSON file
+    /// </summary>
+    public void SaveMidiPreset(MidiControlScheme preset)
+    {
+        try
+        {
+            var filePath = GetPresetFilePath(preset.Name);
+            var json = JsonSerializer.Serialize(preset, JsonOptions);
+            File.WriteAllText(filePath, json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Config] Error saving MIDI preset {preset.Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Gets the names of all available MIDI presets
+    /// </summary>
+    public List<string> GetMidiPresetNames()
+    {
+        return LoadAllMidiPresets().Select(p => p.Name).ToList();
+    }
+
+    /// <summary>
+    /// Deletes a MIDI preset file
+    /// </summary>
+    public bool DeleteMidiPreset(string presetName)
+    {
+        try
+        {
+            var filePath = GetPresetFilePath(presetName);
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+                Console.WriteLine($"[Config] Deleted MIDI preset: {presetName}");
+                return true;
+            }
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Config] Error deleting MIDI preset {presetName}: {ex.Message}");
+            return false;
+        }
+    }
+
+    #endregion
 }

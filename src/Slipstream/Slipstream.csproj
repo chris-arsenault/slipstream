@@ -8,7 +8,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>Slipstream</AssemblyName>
     <RootNamespace>Slipstream</RootNamespace>
-    <Version>1.0.1</Version>
+    <Version>1.1.0</Version>
     <Company>Ahara</Company>
     <Authors>Tsonu</Authors>
     <Product>Slipstream</Product>
@@ -17,12 +17,17 @@
     <PackageProjectUrl>https://github.com/chris-arsenault/slipstream</PackageProjectUrl>
     <RepositoryUrl>https://github.com/chris-arsenault/slipstream</RepositoryUrl>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+
+    <!-- Publishing options - framework-dependent for smaller size -->
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
     <PackageReference Include="SkiaSharp.Views.WPF" Version="2.88.8" />
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+    <PackageReference Include="Melanchall.DryWetMidi" Version="7.2.0" />
   </ItemGroup>
 
   <ItemGroup>
