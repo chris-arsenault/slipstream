@@ -159,13 +159,18 @@ public partial class App : Application
 
             case HotkeyAction.PasteFromSlot:
                 // Directly inject text from slot (no clipboard involved for text)
-                Console.WriteLine($"[App] PasteFromSlot triggered for slot {e.SlotIndex}");
+                Console.WriteLine($"[App] PasteFromSlot triggered for slot {e.SlotIndex}, shift={e.HasShift}, alt={e.HasAlt}");
                 var slot = _slotManager?.GetSlot(e.SlotIndex);
                 Console.WriteLine($"[App] Slot found: {slot != null}, HasContent: {slot?.HasContent}");
                 if (slot?.HasContent == true)
                 {
                     Console.WriteLine($"[App] Pasting: Type={slot.Type}, Text={slot.TextContent?.Substring(0, Math.Min(50, slot.TextContent?.Length ?? 0))}...");
-                    _pasteEngine?.PasteFromSlot(slot);
+                    // Run paste on background thread to avoid blocking message pump
+                    // This allows subsequent hotkeys to be received during paste
+                    var slotToPaste = slot;
+                    bool hasShift = e.HasShift;
+                    bool hasAlt = e.HasAlt;
+                    Task.Run(() => _pasteEngine?.PasteFromSlot(slotToPaste, hasShift, hasAlt));
                 }
                 break;
 
@@ -199,11 +204,15 @@ public partial class App : Application
 
             case HotkeyAction.PasteFromActiveSlot:
                 var activeSlot = _slotManager?.GetSlot(_slotManager.ActiveSlotIndex);
-                Console.WriteLine($"[App] PasteFromActiveSlot triggered, activeIndex={_slotManager?.ActiveSlotIndex}");
+                Console.WriteLine($"[App] PasteFromActiveSlot triggered, activeIndex={_slotManager?.ActiveSlotIndex}, shift={e.HasShift}, alt={e.HasAlt}");
                 if (activeSlot?.HasContent == true)
                 {
                     Console.WriteLine($"[App] Pasting from active slot: Type={activeSlot.Type}");
-                    _pasteEngine?.PasteFromSlot(activeSlot);
+                    // Run paste on background thread to avoid blocking message pump
+                    var activeSlotToPaste = activeSlot;
+                    bool activeHasShift = e.HasShift;
+                    bool activeHasAlt = e.HasAlt;
+                    Task.Run(() => _pasteEngine?.PasteFromSlot(activeSlotToPaste, activeHasShift, activeHasAlt));
                 }
                 break;
         }

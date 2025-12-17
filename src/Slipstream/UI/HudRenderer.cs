@@ -18,8 +18,9 @@ public class HudRenderer
     private const float LockIconSize = 16f;
     private const float LockIconPadding = 8f;
 
-    // Hit testing - store lock button rects
+    // Hit testing - store lock button rects and slot rects
     private readonly List<SKRect> _lockButtonRects = new();
+    private readonly List<SKRect> _slotRects = new();
 
     // Pooled paints for performance
     private readonly SKPaint _backgroundPaint;
@@ -159,6 +160,7 @@ public class HudRenderer
 
         // Clear hit testing rects
         _lockButtonRects.Clear();
+        _slotRects.Clear();
         _tempSlotPromoteRect = SKRect.Empty;
 
         // Calculate content height (temp slot + separator + numbered slots)
@@ -221,6 +223,28 @@ public class HudRenderer
     public bool HitTestTempSlotPromote(float x, float y)
     {
         return !_tempSlotPromoteRect.IsEmpty && _tempSlotPromoteRect.Contains(x, y);
+    }
+
+    /// <summary>
+    /// Returns the slot index if the point is over a slot (not on a button), or -1 otherwise.
+    /// </summary>
+    public int HitTestSlot(float x, float y)
+    {
+        // First check if we're on a lock button - those take priority
+        if (HitTestLockButton(x, y) >= 0)
+            return -1;
+
+        // Check if we're on the temp slot promote button
+        if (HitTestTempSlotPromote(x, y))
+            return -1;
+
+        // Check slot rects
+        for (int i = 0; i < _slotRects.Count; i++)
+        {
+            if (_slotRects[i].Contains(x, y))
+                return i;
+        }
+        return -1;
     }
 
     private void DrawTempSlot(SKCanvas canvas, ClipboardSlot slot, float y, float width)
@@ -323,11 +347,12 @@ public class HudRenderer
     {
         float x = Padding;
 
+        // Store slot rect for hit testing (before lock button area)
+        var slotBounds = new SKRect(x, y, x + width, y + SlotHeight);
+        _slotRects.Add(slotBounds);
+
         // Slot background
-        var slotRect = new SKRoundRect(
-            new SKRect(x, y, x + width, y + SlotHeight),
-            SlotCornerRadius
-        );
+        var slotRect = new SKRoundRect(slotBounds, SlotCornerRadius);
 
         if (isActive)
         {

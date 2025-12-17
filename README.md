@@ -8,6 +8,10 @@ A lightweight, high-performance clipboard manager for Windows that gives you sup
 
 **👉 [Download Slipstream](https://github.com/chris-arsenault/slipstream/releases/latest)** — grab the installer or portable exe and start using it in seconds.
 
+<p align="center">
+  <img src="demo.gif" alt="Slipstream Demo" width="600">
+</p>
+
 ## Why Slipstream?
 
 Ever copy something, then copy something else, and realize you just lost that first thing forever? Or find yourself constantly switching between documents to copy-paste multiple items one at a time?
@@ -25,16 +29,16 @@ The temp slot is your clipboard's short-term memory. Numbered slots are for thin
 
 ## Keyboard Shortcuts
 
-| Action | Shortcut |
-|--------|----------|
-| Copy directly to slot 1-10 | `Ctrl+Alt+1` through `Ctrl+Alt+0` |
-| Paste from slot 1-10 | `Ctrl+Shift+1` through `Ctrl+Shift+0` |
-| Promote temp slot to next numbered slot | `Ctrl+Alt+C` |
-| Paste from active slot | `Ctrl+Alt+V` |
-| Cycle through slots | `Ctrl+Alt+Up/Down` |
-| Toggle HUD visibility | `Ctrl+Alt+H` |
+| Action | Shortcut | Numpad |
+|--------|----------|--------|
+| Copy directly to slot 1-10 | `Ctrl+Alt+1` through `Ctrl+Alt+0` | `Ctrl+Alt+Numpad` |
+| Paste from slot 1-10 | `Ctrl+Shift+1` through `Ctrl+Shift+0` | `Ctrl+Numpad` |
+| Promote temp slot to next numbered slot | `Ctrl+Alt+C` | |
+| Paste from active slot | `Ctrl+Alt+V` | |
+| Cycle through slots | `Ctrl+Alt+Up/Down` | |
+| Toggle HUD visibility | `Ctrl+Alt+H` | |
 
-**Numpad users**: All slot shortcuts also work with numpad keys.
+**Numpad users**: Numpad shortcuts require NumLock to be on.
 
 ## The HUD
 

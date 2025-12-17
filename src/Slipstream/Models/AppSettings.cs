@@ -55,7 +55,8 @@ public class AppSettings
         ["PasteFromSlot9"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.D9),
         ["PasteFromSlot10"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.D0),
 
-        // Numpad: Copy to slot (Ctrl+Alt+Numpad1-0)
+        // Numpad: Copy to slot (Ctrl+Alt+Numpad1-0) - NumLock ON
+        // Alt doesn't affect numpad translation, so VK_NUMPAD# works
         ["CopyToSlotNumpad1"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Alt, VirtualKey.NumPad1),
         ["CopyToSlotNumpad2"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Alt, VirtualKey.NumPad2),
         ["CopyToSlotNumpad3"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Alt, VirtualKey.NumPad3),
@@ -67,17 +68,17 @@ public class AppSettings
         ["CopyToSlotNumpad9"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Alt, VirtualKey.NumPad9),
         ["CopyToSlotNumpad10"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Alt, VirtualKey.NumPad0),
 
-        // Numpad: Paste from slot (Ctrl+Shift+Numpad1-0)
-        ["PasteFromSlotNumpad1"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.NumPad1),
-        ["PasteFromSlotNumpad2"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.NumPad2),
-        ["PasteFromSlotNumpad3"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.NumPad3),
-        ["PasteFromSlotNumpad4"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.NumPad4),
-        ["PasteFromSlotNumpad5"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.NumPad5),
-        ["PasteFromSlotNumpad6"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.NumPad6),
-        ["PasteFromSlotNumpad7"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.NumPad7),
-        ["PasteFromSlotNumpad8"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.NumPad8),
-        ["PasteFromSlotNumpad9"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.NumPad9),
-        ["PasteFromSlotNumpad10"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.NumPad0),
+        // Numpad: Paste from slot (Ctrl+Numpad1-0) - NumLock ON
+        ["PasteFromSlotNumpad1"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.NumPad1),
+        ["PasteFromSlotNumpad2"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.NumPad2),
+        ["PasteFromSlotNumpad3"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.NumPad3),
+        ["PasteFromSlotNumpad4"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.NumPad4),
+        ["PasteFromSlotNumpad5"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.NumPad5),
+        ["PasteFromSlotNumpad6"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.NumPad6),
+        ["PasteFromSlotNumpad7"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.NumPad7),
+        ["PasteFromSlotNumpad8"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.NumPad8),
+        ["PasteFromSlotNumpad9"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.NumPad9),
+        ["PasteFromSlotNumpad10"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.NumPad0),
 
         // Control hotkeys
         ["ToggleHud"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Alt, VirtualKey.H),
@@ -182,6 +183,7 @@ public enum VirtualKey
     End = 0x23,
     PageUp = 0x21,
     PageDown = 0x22,
+    Clear = 0x0C, // Numpad 5 without NumLock (VK_CLEAR)
     F1 = 0x70,
     F2 = 0x71,
     F3 = 0x72,
