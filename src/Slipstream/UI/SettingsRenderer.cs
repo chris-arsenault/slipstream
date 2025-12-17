@@ -406,63 +406,66 @@ public class SettingsRenderer
         // Title bar
         DrawTitleBar(canvas, size);
 
-        // Two-column layout
+        // Three-column layout
         float contentTop = TitleBarHeight + Padding;
         float contentWidth = size.Width - Padding * 2;
-        float columnWidth = (contentWidth - ColumnGap) / 2;
-        float leftColumnX = Padding;
-        float rightColumnX = Padding + columnWidth + ColumnGap;
+        float columnWidth = (contentWidth - ColumnGap * 2) / 3;
+        float col1X = Padding;
+        float col2X = Padding + columnWidth + ColumnGap;
+        float col3X = Padding + (columnWidth + ColumnGap) * 2;
 
-        // === LEFT COLUMN ===
-        float leftY = contentTop;
-
-        // Slot Behavior section
-        leftY = DrawSectionHeader(canvas, "SLOT BEHAVIOR", leftColumnX, leftY, columnWidth);
-        leftY = DrawCompactToggle(canvas, "Auto-promote", _settings.AutoPromote, leftColumnX, leftY, columnWidth, "autoPromote");
-        leftY = DrawCompactRadioGroup(canvas, "Promote target:", leftColumnX, leftY, columnWidth,
-            ("Round Robin", "slotBehaviorRoundRobin", _settings.SlotBehavior == SlotBehavior.RoundRobin),
-            ("Fixed", "slotBehaviorFixed", _settings.SlotBehavior == SlotBehavior.Fixed));
-        leftY += SectionSpacing;
+        // === COLUMN 1: General Settings ===
+        float col1Y = contentTop;
 
         // Startup section
-        leftY = DrawSectionHeader(canvas, "STARTUP", leftColumnX, leftY, columnWidth);
-        leftY = DrawCompactToggle(canvas, "Start with Windows", _settings.StartWithWindows, leftColumnX, leftY, columnWidth, "startWithWindows");
-        leftY = DrawCompactToggle(canvas, "Start minimized", _settings.StartMinimized, leftColumnX, leftY, columnWidth, "startMinimized");
-        leftY += SectionSpacing;
+        col1Y = DrawSectionHeader(canvas, "STARTUP", col1X, col1Y, columnWidth);
+        col1Y = DrawCompactToggle(canvas, "Start with Windows", _settings.StartWithWindows, col1X, col1Y, columnWidth, "startWithWindows");
+        col1Y = DrawCompactToggle(canvas, "Start minimized", _settings.StartMinimized, col1X, col1Y, columnWidth, "startMinimized");
+        col1Y += SectionSpacing;
 
         // HUD section
-        leftY = DrawSectionHeader(canvas, "HUD", leftColumnX, leftY, columnWidth);
-        leftY = DrawCompactToggle(canvas, "Show on start", _settings.ShowHudOnStart, leftColumnX, leftY, columnWidth, "showHudOnStart");
-        leftY = DrawCompactToggle(canvas, "Click-through", _settings.HudClickThrough, leftColumnX, leftY, columnWidth, "hudClickThrough");
-        leftY += SectionSpacing;
+        col1Y = DrawSectionHeader(canvas, "HUD", col1X, col1Y, columnWidth);
+        col1Y = DrawCompactToggle(canvas, "Show on start", _settings.ShowHudOnStart, col1X, col1Y, columnWidth, "showHudOnStart");
+        col1Y = DrawCompactToggle(canvas, "Click-through", _settings.HudClickThrough, col1X, col1Y, columnWidth, "hudClickThrough");
+        col1Y += SectionSpacing;
 
         // Appearance section
-        leftY = DrawSectionHeader(canvas, "APPEARANCE", leftColumnX, leftY, columnWidth);
-        leftY = DrawPaletteSelectorCompact(canvas, leftColumnX, leftY, columnWidth);
-        leftY += SectionSpacing;
+        col1Y = DrawSectionHeader(canvas, "APPEARANCE", col1X, col1Y, columnWidth);
+        col1Y = DrawPaletteSelectorCompact(canvas, col1X, col1Y, columnWidth);
+        col1Y += SectionSpacing;
 
         // Data section
-        leftY = DrawSectionHeader(canvas, "DATA", leftColumnX, leftY, columnWidth);
-        leftY = DrawCompactButton(canvas, "Clear All Slots", leftColumnX, leftY, columnWidth, "clearAllSlots", true);
-        leftY += SectionSpacing;
+        col1Y = DrawSectionHeader(canvas, "DATA", col1X, col1Y, columnWidth);
+        col1Y = DrawCompactButton(canvas, "Clear All Slots", col1X, col1Y, columnWidth, "clearAllSlots", true);
 
-        // Sticky Apps section
-        leftY = DrawSectionHeader(canvas, "STICKY APPS", leftColumnX, leftY, columnWidth);
-        leftY = DrawStickyAppsSection(canvas, leftColumnX, leftY, columnWidth);
-
-        // === RIGHT COLUMN ===
-        float rightY = contentTop;
+        // === COLUMN 2: MIDI ===
+        float col2Y = contentTop;
 
         // MIDI section
-        rightY = DrawSectionHeader(canvas, "MIDI", rightColumnX, rightY, columnWidth);
-        rightY = DrawMidiSection(canvas, rightColumnX, rightY, columnWidth);
-        rightY += SectionSpacing;
+        col2Y = DrawSectionHeader(canvas, "MIDI", col2X, col2Y, columnWidth);
+        col2Y = DrawMidiSection(canvas, col2X, col2Y, columnWidth);
+        col2Y += SectionSpacing;
 
         // Hotkeys section
-        rightY = DrawSectionHeader(canvas, "HOTKEYS", rightColumnX, rightY, columnWidth);
-        rightY = DrawHotkeyInfoCompact(canvas, rightColumnX, rightY, columnWidth);
-        rightY += 4;
-        rightY = DrawCompactButton(canvas, "Reset to Defaults", rightColumnX, rightY, columnWidth, "resetHotkeys", false);
+        col2Y = DrawSectionHeader(canvas, "HOTKEYS", col2X, col2Y, columnWidth);
+        col2Y = DrawHotkeyInfoCompact(canvas, col2X, col2Y, columnWidth);
+        col2Y += 4;
+        col2Y = DrawCompactButton(canvas, "Reset to Defaults", col2X, col2Y, columnWidth, "resetHotkeys", false);
+
+        // === COLUMN 3: Slot Behavior & Sticky Apps ===
+        float col3Y = contentTop;
+
+        // Slot Behavior section
+        col3Y = DrawSectionHeader(canvas, "SLOT BEHAVIOR", col3X, col3Y, columnWidth);
+        col3Y = DrawCompactToggle(canvas, "Auto-promote", _settings.AutoPromote, col3X, col3Y, columnWidth, "autoPromote");
+        col3Y = DrawCompactRadioGroup(canvas, "Promote target:", col3X, col3Y, columnWidth,
+            ("Round Robin", "slotBehaviorRoundRobin", _settings.SlotBehavior == SlotBehavior.RoundRobin),
+            ("Fixed", "slotBehaviorFixed", _settings.SlotBehavior == SlotBehavior.Fixed));
+        col3Y += SectionSpacing;
+
+        // Sticky Apps section
+        col3Y = DrawSectionHeader(canvas, "STICKY APPS", col3X, col3Y, columnWidth);
+        col3Y = DrawStickyAppsSection(canvas, col3X, col3Y, columnWidth);
 
         // Border
         canvas.DrawRoundRect(bgRect, _borderPaint);
@@ -647,9 +650,11 @@ public class SettingsRenderer
 
     private float DrawPaletteSelectorCompact(SKCanvas canvas, float x, float y, float width)
     {
-        float swatchWidth = 56f;
+        // Calculate swatch size based on available width
+        float swatchSpacing = 6f;
+        float availableWidth = width - swatchSpacing * 2;
+        float swatchWidth = Math.Min(56f, availableWidth / 3);
         float swatchHeight = 36f;
-        float swatchSpacing = 8f;
 
         var palettes = new[]
         {
