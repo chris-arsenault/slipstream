@@ -1,4 +1,7 @@
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Media.Imaging;
 using Slipstream.Models;
 using Slipstream.Native;
 
@@ -63,11 +66,7 @@ public class PasteEngine
             case ClipboardType.Image:
                 if (slot.ImageContent != null)
                 {
-                    var image = BytesToBitmapSource(slot.ImageContent);
-                    if (image != null)
-                    {
-                        dataObject.SetImage(image);
-                    }
+                    SetImageToDataObject(dataObject, slot.ImageContent);
                 }
                 break;
 
@@ -116,19 +115,101 @@ public class PasteEngine
         Console.WriteLine($"[PasteEngine] Paste complete");
     }
 
-    private static System.Windows.Media.Imaging.BitmapSource? BytesToBitmapSource(byte[] imageData)
+    /// <summary>
+    /// Sets image data to the DataObject in multiple formats for maximum compatibility.
+    /// MS Paint and many other apps require DIB format, not just CF_BITMAP.
+    /// </summary>
+    private static void SetImageToDataObject(DataObject dataObject, byte[] pngData)
     {
         try
         {
-            using var stream = new System.IO.MemoryStream(imageData);
-            var decoder = new System.Windows.Media.Imaging.PngBitmapDecoder(
-                stream,
-                System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
-                System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
-            return decoder.Frames[0];
+            // Decode PNG to BitmapSource
+            using var pngStream = new MemoryStream(pngData);
+            var decoder = BitmapDecoder.Create(pngStream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            var bitmapSource = decoder.Frames[0];
+
+            Console.WriteLine($"[PasteEngine] Image: {bitmapSource.PixelWidth}x{bitmapSource.PixelHeight}, Format={bitmapSource.Format}");
+
+            // Convert to Bgra32 for consistent handling
+            var convertedBitmap = new FormatConvertedBitmap(bitmapSource, System.Windows.Media.PixelFormats.Bgra32, null, 0);
+
+            // Set the standard WPF image format
+            dataObject.SetImage(convertedBitmap);
+
+            // Also set as PNG for apps that support it
+            using var pngOutStream = new MemoryStream();
+            var pngEncoder = new PngBitmapEncoder();
+            pngEncoder.Frames.Add(BitmapFrame.Create(convertedBitmap));
+            pngEncoder.Save(pngOutStream);
+            dataObject.SetData("PNG", pngOutStream.ToArray());
+
+            // Create DIB (Device Independent Bitmap) for MS Paint and other legacy apps
+            var dibData = CreateDibFromBitmap(convertedBitmap);
+            if (dibData != null)
+            {
+                dataObject.SetData(DataFormats.Dib, dibData);
+                Console.WriteLine($"[PasteEngine] DIB format set: {dibData.Length} bytes");
+            }
+
+            Console.WriteLine("[PasteEngine] Image formats set: Bitmap, PNG, DIB");
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[PasteEngine] Error setting image: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Creates a DIB (Device Independent Bitmap) byte array from a BitmapSource.
+    /// DIB format is required by MS Paint and many other applications.
+    /// </summary>
+    private static MemoryStream? CreateDibFromBitmap(BitmapSource source)
+    {
+        try
+        {
+            int width = source.PixelWidth;
+            int height = source.PixelHeight;
+            int stride = width * 4; // BGRA = 4 bytes per pixel
+
+            // Get pixel data
+            byte[] pixels = new byte[height * stride];
+            source.CopyPixels(pixels, stride, 0);
+
+            // DIB is stored bottom-up, so we need to flip the rows
+            byte[] flippedPixels = new byte[pixels.Length];
+            for (int y = 0; y < height; y++)
+            {
+                int srcOffset = y * stride;
+                int dstOffset = (height - 1 - y) * stride;
+                Array.Copy(pixels, srcOffset, flippedPixels, dstOffset, stride);
+            }
+
+            // Create BITMAPINFOHEADER (40 bytes)
+            var ms = new MemoryStream();
+            using var writer = new BinaryWriter(ms, System.Text.Encoding.Default, leaveOpen: true);
+
+            // BITMAPINFOHEADER
+            writer.Write(40);              // biSize
+            writer.Write(width);           // biWidth
+            writer.Write(height);          // biHeight
+            writer.Write((short)1);        // biPlanes
+            writer.Write((short)32);       // biBitCount (32-bit BGRA)
+            writer.Write(0);               // biCompression (BI_RGB = 0)
+            writer.Write(flippedPixels.Length); // biSizeImage
+            writer.Write(0);               // biXPelsPerMeter
+            writer.Write(0);               // biYPelsPerMeter
+            writer.Write(0);               // biClrUsed
+            writer.Write(0);               // biClrImportant
+
+            // Pixel data (already in BGRA format, flipped)
+            writer.Write(flippedPixels);
+
+            ms.Position = 0;
+            return ms;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PasteEngine] Error creating DIB: {ex.Message}");
             return null;
         }
     }

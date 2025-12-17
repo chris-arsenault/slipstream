@@ -1,3 +1,4 @@
+using System.IO;
 using SkiaSharp;
 using Slipstream.Models;
 
@@ -21,6 +22,10 @@ public class HudRenderer
     // Hit testing - store lock button rects and slot rects
     private readonly List<SKRect> _lockButtonRects = new();
     private readonly List<SKRect> _slotRects = new();
+
+    // Image thumbnail cache
+    private readonly Dictionary<int, SKBitmap?> _thumbnailCache = new();
+    private readonly Dictionary<int, int> _thumbnailHashes = new(); // Track content hash to invalidate cache
 
     // Pooled paints for performance
     private readonly SKPaint _backgroundPaint;
@@ -393,8 +398,16 @@ public class HudRenderer
 
         if (slot.HasContent)
         {
-            var preview = TruncateToWidth(slot.Preview, previewWidth, _textPaint);
-            canvas.DrawText(preview, previewX, textY, _textPaint);
+            if (slot.Type == ClipboardType.Image && slot.ImageContent != null)
+            {
+                // Draw image thumbnail
+                DrawImageThumbnail(canvas, slot, index, previewX, y, previewWidth);
+            }
+            else
+            {
+                var preview = TruncateToWidth(slot.Preview, previewWidth, _textPaint);
+                canvas.DrawText(preview, previewX, textY, _textPaint);
+            }
         }
         else
         {
@@ -487,8 +500,120 @@ public class HudRenderer
         return low > 0 ? text[..low] + ellipsis : ellipsis;
     }
 
+    private void DrawImageThumbnail(SKCanvas canvas, ClipboardSlot slot, int index, float x, float y, float maxWidth)
+    {
+        if (slot.ImageContent == null) return;
+
+        // Get or create cached thumbnail
+        int contentHash = slot.ImageContent.Length; // Simple hash based on size
+        if (!_thumbnailCache.TryGetValue(index, out var thumbnail) ||
+            !_thumbnailHashes.TryGetValue(index, out var cachedHash) ||
+            cachedHash != contentHash)
+        {
+            // Dispose old thumbnail
+            if (thumbnail != null)
+            {
+                thumbnail.Dispose();
+            }
+
+            thumbnail = CreateThumbnail(slot.ImageContent, (int)SlotHeight - 4);
+            _thumbnailCache[index] = thumbnail;
+            _thumbnailHashes[index] = contentHash;
+        }
+
+        if (thumbnail == null) return;
+
+        // Calculate thumbnail dimensions to fit in slot
+        float thumbHeight = SlotHeight - 4;
+        float thumbWidth = thumbnail.Width * (thumbHeight / thumbnail.Height);
+        if (thumbWidth > maxWidth * 0.4f)
+        {
+            thumbWidth = maxWidth * 0.4f;
+            thumbHeight = thumbnail.Height * (thumbWidth / thumbnail.Width);
+        }
+
+        float thumbY = y + (SlotHeight - thumbHeight) / 2;
+
+        // Draw thumbnail with border
+        var thumbRect = new SKRect(x, thumbY, x + thumbWidth, thumbY + thumbHeight);
+
+        using var paint = new SKPaint { IsAntialias = true, FilterQuality = SKFilterQuality.Medium };
+        canvas.DrawBitmap(thumbnail, thumbRect, paint);
+
+        // Draw border around thumbnail
+        using var borderPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1f,
+            Color = _theme.Border
+        };
+        canvas.DrawRect(thumbRect, borderPaint);
+
+        // Draw image dimensions text next to thumbnail
+        float textX = x + thumbWidth + 6;
+        float textY = y + SlotHeight / 2 + _secondaryTextPaint.TextSize / 3;
+
+        // Get original image dimensions (not thumbnail size)
+        string dimText = GetImageDimensions(slot.ImageContent);
+        canvas.DrawText(dimText, textX, textY, _secondaryTextPaint);
+    }
+
+    private static string GetImageDimensions(byte[] imageData)
+    {
+        try
+        {
+            using var stream = new MemoryStream(imageData);
+            using var codec = SKCodec.Create(stream);
+            if (codec != null)
+            {
+                return $"{codec.Info.Width}x{codec.Info.Height}";
+            }
+        }
+        catch { }
+        return "[Image]";
+    }
+
+    private static SKBitmap? CreateThumbnail(byte[] imageData, int maxHeight)
+    {
+        try
+        {
+            using var stream = new MemoryStream(imageData);
+            using var codec = SKCodec.Create(stream);
+            if (codec == null) return null;
+
+            var info = codec.Info;
+            float scale = (float)maxHeight / info.Height;
+            int thumbWidth = (int)(info.Width * scale);
+            int thumbHeight = maxHeight;
+
+            var bitmap = new SKBitmap(thumbWidth, thumbHeight);
+            using var fullBitmap = SKBitmap.Decode(imageData);
+            if (fullBitmap == null)
+            {
+                bitmap.Dispose();
+                return null;
+            }
+
+            fullBitmap.ScalePixels(bitmap, SKFilterQuality.Medium);
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public void Dispose()
     {
+        // Dispose thumbnail cache
+        foreach (var thumbnail in _thumbnailCache.Values)
+        {
+            thumbnail?.Dispose();
+        }
+        _thumbnailCache.Clear();
+        _thumbnailHashes.Clear();
+
         _backgroundPaint.Dispose();
         _slotPaint.Dispose();
         _activeSlotPaint.Dispose();
