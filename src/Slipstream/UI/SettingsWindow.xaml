@@ -4,7 +4,7 @@
         xmlns:skia="clr-namespace:SkiaSharp.Views.WPF;assembly=SkiaSharp.Views.WPF"
         Title="Slipstream Settings"
         Width="480"
-        Height="520"
+        Height="620"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
