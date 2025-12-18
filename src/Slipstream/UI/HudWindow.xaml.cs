@@ -81,13 +81,14 @@ public partial class HudWindow : Window
         const float slotHeight = 32f;
         const float slotSpacing = 4f;
         const float separatorHeight = 8f;
+        const float headerHeight = 24f; // Reserved space for processor badges
 
         int slotCount = _slotManager.SlotCount;
         bool hasTempSlot = true; // Always have temp slot
 
-        // Calculate content height
+        // Calculate content height (includes header space for processor badges)
         int totalSlots = slotCount + (hasTempSlot ? 1 : 0);
-        float contentHeight = padding * 2 + totalSlots * slotHeight + (totalSlots - 1) * slotSpacing + separatorHeight;
+        float contentHeight = padding * 2 + headerHeight + totalSlots * slotHeight + (totalSlots - 1) * slotSpacing + separatorHeight;
 
         // Set window size (WPF uses device-independent units, which matches our drawing)
         Height = contentHeight;

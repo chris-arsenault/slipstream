@@ -12,20 +12,25 @@ public class TrayManager : IDisposable
     private readonly Action _onShowHud;
     private readonly Action _onHideHud;
     private readonly Action _onOpenSettings;
+    private readonly Action? _onToggleMidiDebug;
     private readonly Action _onQuit;
 
     private MenuItem? _hudMenuItem;
+    private MenuItem? _midiDebugMenuItem;
     private bool _isHudVisible = false;
+    private bool _isMidiDebugVisible = false;
 
     public TrayManager(
         Action onShowHud,
         Action onHideHud,
         Action onOpenSettings,
-        Action onQuit)
+        Action onQuit,
+        Action? onToggleMidiDebug = null)
     {
         _onShowHud = onShowHud;
         _onHideHud = onHideHud;
         _onOpenSettings = onOpenSettings;
+        _onToggleMidiDebug = onToggleMidiDebug;
         _onQuit = onQuit;
 
         _trayIcon = new TaskbarIcon
@@ -67,6 +72,14 @@ public class TrayManager : IDisposable
         settingsItem.Click += (_, _) => _onOpenSettings();
         menu.Items.Add(settingsItem);
 
+        // MIDI Debug option (only if callback provided)
+        if (_onToggleMidiDebug != null)
+        {
+            _midiDebugMenuItem = new MenuItem { Header = "Show MIDI Debug" };
+            _midiDebugMenuItem.Click += (_, _) => ToggleMidiDebug();
+            menu.Items.Add(_midiDebugMenuItem);
+        }
+
         menu.Items.Add(new Separator());
 
         var quitItem = new MenuItem { Header = "Quit" };
@@ -87,6 +100,20 @@ public class TrayManager : IDisposable
         if (_hudMenuItem != null)
         {
             _hudMenuItem.Header = _isHudVisible ? "Hide HUD" : "Show HUD";
+        }
+    }
+
+    private void ToggleMidiDebug()
+    {
+        _onToggleMidiDebug?.Invoke();
+    }
+
+    public void UpdateMidiDebugVisibility(bool isVisible)
+    {
+        _isMidiDebugVisible = isVisible;
+        if (_midiDebugMenuItem != null)
+        {
+            _midiDebugMenuItem.Header = _isMidiDebugVisible ? "Hide MIDI Debug" : "Show MIDI Debug";
         }
     }
 

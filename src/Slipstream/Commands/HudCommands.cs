@@ -1,3 +1,5 @@
+using System.Windows;
+
 namespace Slipstream.Commands;
 
 /// <summary>
@@ -21,9 +23,13 @@ public class ToggleHudCommand : ICommand
     {
         if (_context.HudWindow == null) return;
 
-        if (_context.HudWindow.IsVisible)
-            _context.HudWindow.Hide();
-        else
-            _context.HudWindow.Show();
+        // Must run on UI thread since we're accessing Window properties
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            if (_context.HudWindow.IsVisible)
+                _context.HudWindow.Hide();
+            else
+                _context.HudWindow.Show();
+        });
     }
 }

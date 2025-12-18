@@ -116,8 +116,8 @@ public class HudRenderer : BaseRenderer
         int chordCount = chordProcessors?.Count ?? 0;
         bool hasProcessors = toggledCount > 0 || chordCount > 0;
 
-        // Calculate header height for armed processors
-        float headerHeight = hasProcessors ? 24f : 0f;
+        // Always reserve space for processor badges to avoid layout jumping
+        const float headerHeight = 24f;
 
         // Calculate content height (header + temp slot + separator + numbered slots)
         int totalSlots = slots.Count + (tempSlot != null ? 1 : 0);
@@ -135,12 +135,12 @@ public class HudRenderer : BaseRenderer
 
         float y = Padding;
 
-        // Draw processor badges if any
+        // Draw processor badges if any (always reserve space for header)
         if (hasProcessors)
         {
             DrawProcessorBadges(canvas, toggledProcessors, chordProcessors, y, size.Width - Padding * 2);
-            y += headerHeight;
         }
+        y += headerHeight;
 
         // Draw temp slot first (at top) if it exists
         if (tempSlot != null)

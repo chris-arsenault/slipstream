@@ -13,6 +13,7 @@ public partial class App : Application
     private MessageWindow? _messageWindow;
     private TrayManager? _trayManager;
     private HudWindow? _hudWindow;
+    private MidiDebugWindow? _midiDebugWindow;
     private ConfigService? _configService;
     private AppSettings? _settings;
     private SlotManager? _slotManager;
@@ -104,7 +105,8 @@ public partial class App : Application
             onShowHud: () => _hudWindow?.Show(),
             onHideHud: () => _hudWindow?.Hide(),
             onOpenSettings: OpenSettings,
-            onQuit: Shutdown
+            onQuit: Shutdown,
+            onToggleMidiDebug: ToggleMidiDebug
         );
 
         // Start clipboard monitoring (always on)
@@ -181,6 +183,29 @@ public partial class App : Application
         settingsWindow.Show();
     }
 
+    private void ToggleMidiDebug()
+    {
+        if (_midiDebugWindow != null)
+        {
+            // Close existing window
+            _midiDebugWindow.Close();
+            _midiDebugWindow = null;
+            _trayManager?.UpdateMidiDebugVisibility(false);
+        }
+        else
+        {
+            // Open new window
+            _midiDebugWindow = new MidiDebugWindow(_midiManager!, _midiPresets!, _settings!.MidiSettings, _settings, _configService!);
+            _midiDebugWindow.Closed += (_, _) =>
+            {
+                _midiDebugWindow = null;
+                _trayManager?.UpdateMidiDebugVisibility(false);
+            };
+            _midiDebugWindow.Show();
+            _trayManager?.UpdateMidiDebugVisibility(true);
+        }
+    }
+
     private void OnSettingsUpdated(AppSettings settings)
     {
         // Update our local settings reference so AutoPromote works
@@ -231,6 +256,7 @@ public partial class App : Application
         _hotkeyManager?.Dispose();
         _clipboardMonitor?.Dispose();
         _trayManager?.Dispose();
+        _midiDebugWindow?.Close();
         _hudWindow?.Close();
         _messageWindow?.Close();
 

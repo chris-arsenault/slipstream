@@ -9,7 +9,7 @@ A lightweight, high-performance clipboard manager for Windows that gives you sup
 **[Download Slipstream](https://github.com/chris-arsenault/slipstream/releases/latest)** — grab the installer or portable exe and start using it in seconds.
 
 <p align="center">
-  <img src="docs/imgs/demo.gif" alt="Slipstream Demo" width="600">
+  <img src="docs/imgs/demo.gif" alt="Slipstream Demo" width="580">
 </p>
 
 ## Why Slipstream?
@@ -42,9 +42,7 @@ The temp slot is your clipboard's short-term memory. Numbered slots are for thin
 
 ## The HUD
 
-<p align="center">
-  <img src="docs/imgs/hud.png" alt="Slipstream HUD" width="300">
-</p>
+<img src="docs/imgs/hud.png" alt="Slipstream HUD" width="220" align="right">
 
 Toggle the HUD via system tray or `Ctrl+Alt+H`. It shows:
 
@@ -56,11 +54,14 @@ Toggle the HUD via system tray or `Ctrl+Alt+H`. It shows:
 
 The HUD stays out of your way—drag it anywhere, and it remembers its position.
 
+<br clear="both">
+
 ## Transforms
 
 Apply real-time transformations to clipboard content when pasting. Toggle transforms on/off or hold MIDI keys as "chords" to apply them.
 
 **Text Transforms:**
+
 | Transform | Description | Priority |
 |-----------|-------------|----------|
 | Upper | Convert to UPPERCASE | 10 |
@@ -72,6 +73,7 @@ Apply real-time transformations to clipboard content when pasting. Toggle transf
 | Newline | Add exactly one trailing newline | 50 |
 
 **Image Transforms:**
+
 | Transform | Description | Priority |
 |-----------|-------------|----------|
 | Gray | Convert to grayscale | 100 |
@@ -93,15 +95,17 @@ Active transforms show as badges on the HUD (solid = toggled on, outline = MIDI 
 ## MIDI Controller Support
 
 <p align="center">
-  <img src="docs/imgs/midi.png" alt="MIDI Editor" width="500">
+  <img src="docs/imgs/midi.gif" alt="MIDI Demo" width="580">
 </p>
 
 Slipstream supports MIDI controllers for clipboard management. Map any MIDI note to paste, copy, control, or transform actions.
 
+<img src="docs/imgs/midi.png" alt="MIDI Editor" width="340" align="right">
+
 **Features:**
 - Visual piano keyboard editor for creating custom mappings
 - Preset support for popular controllers (Launchkey Mini, etc.)
-- Real-time MIDI input visualization
+- Real-time MIDI input visualization with debug overlay
 - **Copy Modifier** - Hold one key to transform paste actions into copy actions
 - **Transform Chords** - Hold keys to apply transforms while pasting
 
@@ -111,35 +115,25 @@ Slipstream supports MIDI controllers for clipboard management. Map any MIDI note
 3. Choose a preset or click "New" to create custom mappings
 4. Map notes to actions: Paste/Copy slots 1-10, Toggle HUD, Cycle slots, Transforms, and more
 
+<br clear="both">
+
 ## Settings
 
-<p align="center">
-  <img src="docs/imgs/settings.png" alt="Settings Window" width="400">
-</p>
+<img src="docs/imgs/settings.png" alt="Settings Window" width="280" align="left">
 
 Right-click the tray icon and select Settings to configure:
 
-**General Tab:**
-- Startup options (launch with Windows, start minimized)
-- HUD options (show on start, click-through mode)
-- Data management (clear all slots)
+**General Tab:** Startup options, HUD visibility, data management
 
-**Behavior Tab:**
-- Theme selection (Dark, Light, Terminal)
-- Slot behavior (Auto-promote, Round Robin vs Fixed)
-- Sticky Apps (apps that reuse a single slot)
+**Behavior Tab:** Theme selection, slot behavior (Auto-promote, Round Robin vs Fixed), Sticky Apps
 
-**MIDI Tab:**
-- Device selection and connection status
-- Preset management with visual editor
-- Transform chord configuration
+**MIDI Tab:** Device selection, preset management, transform chord configuration
 
-**Hotkeys Tab:**
-- View and edit all keyboard shortcuts
-- Click any binding to capture a new key combo
-- Includes transform toggle hotkeys
+**Hotkeys Tab:** View and edit all keyboard shortcuts—click any binding to capture a new key combo
 
 Settings and window positions are saved automatically.
+
+<br clear="both">
 
 ## Slot Behavior Modes
 

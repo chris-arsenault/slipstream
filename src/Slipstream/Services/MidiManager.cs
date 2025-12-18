@@ -381,12 +381,12 @@ public class MidiManager : IDisposable
 
         Console.WriteLine($"[MIDI] Note On: note={noteNumber}, velocity={velocity}, channel={channel}");
 
-        // In edit mode, fire raw events instead of processing actions
+        // Always fire raw events for visualization (debug window, etc.)
+        RawNoteReceived?.Invoke(this, new MidiNoteEventArgs(noteNumber, velocity, channel, true));
+
+        // In edit mode, don't process actions (just visualize)
         if (_editMode)
-        {
-            RawNoteReceived?.Invoke(this, new MidiNoteEventArgs(noteNumber, velocity, channel, true));
             return;
-        }
 
         // Check if this is the copy modifier
         if (IsTriggerMatch(_copyModifier, MidiTriggerType.NoteOn, channel, noteNumber, velocity))
@@ -426,12 +426,12 @@ public class MidiManager : IDisposable
         int noteNumber = (int)noteOff.NoteNumber;
         int channel = noteOff.Channel;
 
-        // In edit mode, fire raw events
+        // Always fire raw events for visualization
+        RawNoteReceived?.Invoke(this, new MidiNoteEventArgs(noteNumber, 0, channel, false));
+
+        // In edit mode, don't process actions
         if (_editMode)
-        {
-            RawNoteReceived?.Invoke(this, new MidiNoteEventArgs(noteNumber, 0, channel, false));
             return;
-        }
 
         // Check if copy modifier released
         if (_copyModifier != null &&
