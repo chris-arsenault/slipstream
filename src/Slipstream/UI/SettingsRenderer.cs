@@ -1,5 +1,6 @@
 using SkiaSharp;
 using Slipstream.Models;
+using Slipstream.Processing;
 using Slipstream.Services;
 
 namespace Slipstream.UI;
@@ -9,18 +10,28 @@ public class SettingsRenderer : BaseRenderer
     private AppSettings _settings;
     private readonly MidiPresets? _midiPresets;
 
+    // Tab state
+    private int _activeTab = 0;
+    private static readonly string[] TabNames = { "General", "Behavior", "MIDI", "Hotkeys" };
+
     // MIDI state (updated externally)
     private IReadOnlyList<string> _midiDevices = Array.Empty<string>();
     private string? _currentMidiDevice;
     private bool _midiConnected;
 
-    // Layout
+    // Layout constants
     private const float TitleBarHeight = 40f;
+    private const float TabBarHeight = 32f;
     private const float CornerRadius = 12f;
     private const float Padding = 16f;
-    private const float ColumnGap = 20f;
     private const float SectionSpacing = 16f;
     private const float ItemSpacing = 8f;
+
+    // Hotkey editing state
+    private string? _editingHotkeyId;
+    private float _hotkeyScrollOffset = 0f;
+    private float _hotkeyContentHeight = 0f;
+    private SKRect _hotkeyScrollArea;
 
     // Button action dispatch
     private readonly Dictionary<string, Action> _buttonActions;
@@ -34,7 +45,7 @@ public class SettingsRenderer : BaseRenderer
     private string? _hoveredButton;
     private string? _pressedButton;
     private bool _presetDropdownOpen;
-    private SKRect _presetDropdownAnchor; // Position of the dropdown button for overlay
+    private SKRect _presetDropdownAnchor;
 
     // Sticky app input state
     private string _stickyAppInput = "";
@@ -49,8 +60,11 @@ public class SettingsRenderer : BaseRenderer
     public event Action<string>? MidiPresetSelected;
     public event Action? EditMidiPresetRequested;
     public event Action? NewMidiPresetRequested;
+    public event Action<string, HotkeyBinding>? HotkeyBindingChanged;
 
     public bool IsStickyAppInputFocused => _stickyAppInputFocused;
+    public bool IsEditingHotkey => _editingHotkeyId != null;
+    public string? EditingHotkeyId => _editingHotkeyId;
 
     public SettingsRenderer(AppSettings settings, MidiPresets? midiPresets = null)
         : base(ColorTheme.GetTheme(settings.ColorPalette))
@@ -82,14 +96,20 @@ public class SettingsRenderer : BaseRenderer
         ["editMidiPreset"] = () => EditMidiPresetRequested?.Invoke(),
         ["newMidiPreset"] = () => NewMidiPresetRequested?.Invoke(),
         ["stickyAppInput"] = () => _stickyAppInputFocused = true,
-        ["addStickyApp"] = () => { if (!string.IsNullOrWhiteSpace(_stickyAppInput)) { AddStickyApp(_stickyAppInput.Trim()); _stickyAppInput = ""; } }
+        ["addStickyApp"] = () => { if (!string.IsNullOrWhiteSpace(_stickyAppInput)) { AddStickyApp(_stickyAppInput.Trim()); _stickyAppInput = ""; } },
+        ["tab0"] = () => { _activeTab = 0; _presetDropdownOpen = false; },
+        ["tab1"] = () => { _activeTab = 1; _presetDropdownOpen = false; },
+        ["tab2"] = () => { _activeTab = 2; _presetDropdownOpen = false; },
+        ["tab3"] = () => { _activeTab = 3; _presetDropdownOpen = false; _editingHotkeyId = null; },
+        ["cancelHotkeyEdit"] = () => _editingHotkeyId = null,
     };
 
     private List<(string Prefix, Action<string> Handler)> InitializePrefixHandlers() =>
     [
         ("midiDevice_", deviceName => MidiDeviceSelected?.Invoke(deviceName)),
         ("midiPreset_", presetName => { _settings.MidiSettings.ActivePreset = presetName; _presetDropdownOpen = false; MidiPresetSelected?.Invoke(presetName); SettingsChanged?.Invoke(_settings); }),
-        ("removeStickyApp_", appName => RemoveStickyApp(appName))
+        ("removeStickyApp_", appName => RemoveStickyApp(appName)),
+        ("editHotkey_", hotkeyId => StartEditingHotkey(hotkeyId)),
     ];
 
     public void SetTheme(ColorPalette palette)
@@ -103,6 +123,27 @@ public class SettingsRenderer : BaseRenderer
         _midiDevices = devices;
         _currentMidiDevice = currentDevice;
         _midiConnected = connected;
+    }
+
+    private void StartEditingHotkey(string hotkeyId)
+    {
+        _editingHotkeyId = hotkeyId;
+    }
+
+    public void CancelHotkeyEdit()
+    {
+        _editingHotkeyId = null;
+    }
+
+    public void SetHotkeyBinding(ModifierKeys modifiers, VirtualKey key)
+    {
+        if (_editingHotkeyId == null) return;
+
+        var binding = new HotkeyBinding(modifiers, key);
+        _settings.HotkeyBindings[_editingHotkeyId] = binding;
+        HotkeyBindingChanged?.Invoke(_editingHotkeyId, binding);
+        SettingsChanged?.Invoke(_settings);
+        _editingHotkeyId = null;
     }
 
     public void HandleTextInput(string text)
@@ -139,6 +180,15 @@ public class SettingsRenderer : BaseRenderer
         }
     }
 
+    public void HandleScroll(float delta)
+    {
+        if (_activeTab == 3) // Hotkeys tab
+        {
+            _hotkeyScrollOffset = Math.Max(0, Math.Min(_hotkeyScrollOffset - delta * 30,
+                Math.Max(0, _hotkeyContentHeight - _hotkeyScrollArea.Height)));
+        }
+    }
+
     private void AddStickyApp(string processName)
     {
         if (!_settings.StickyApps.Contains(processName, StringComparer.OrdinalIgnoreCase))
@@ -157,7 +207,6 @@ public class SettingsRenderer : BaseRenderer
     protected override void UpdatePaintColors()
     {
         base.UpdatePaintColors();
-        // Additional paints specific to SettingsRenderer would be updated here
     }
 
     public bool IsInTitleBar(SKPoint point)
@@ -244,14 +293,12 @@ public class SettingsRenderer : BaseRenderer
 
     private void ExecuteButtonAction(string buttonId)
     {
-        // Try exact match first
         if (_buttonActions.TryGetValue(buttonId, out var action))
         {
             action();
             return;
         }
 
-        // Try prefix handlers
         foreach (var (prefix, handler) in _prefixHandlers)
         {
             if (buttonId.StartsWith(prefix))
@@ -280,74 +327,38 @@ public class SettingsRenderer : BaseRenderer
         // Title bar
         DrawTitleBar(canvas, size);
 
-        // Three-column layout
-        float contentTop = TitleBarHeight + Padding;
+        // Tab bar
+        DrawTabBar(canvas, size);
+
+        // Content area
+        float contentTop = TitleBarHeight + TabBarHeight + Padding;
         float contentWidth = size.Width - Padding * 2;
-        float columnWidth = (contentWidth - ColumnGap * 2) / 3;
-        float col1X = Padding;
-        float col2X = Padding + columnWidth + ColumnGap;
-        float col3X = Padding + (columnWidth + ColumnGap) * 2;
+        float contentHeight = size.Height - contentTop - Padding;
 
-        // === COLUMN 1: General Settings ===
-        float col1Y = contentTop;
-
-        // Startup section
-        col1Y = DrawSectionHeader(canvas, "STARTUP", col1X, col1Y, columnWidth);
-        col1Y = DrawCompactToggle(canvas, "Start with Windows", _settings.StartWithWindows, col1X, col1Y, columnWidth, "startWithWindows");
-        col1Y = DrawCompactToggle(canvas, "Start minimized", _settings.StartMinimized, col1X, col1Y, columnWidth, "startMinimized");
-        col1Y += SectionSpacing;
-
-        // HUD section
-        col1Y = DrawSectionHeader(canvas, "HUD", col1X, col1Y, columnWidth);
-        col1Y = DrawCompactToggle(canvas, "Show on start", _settings.ShowHudOnStart, col1X, col1Y, columnWidth, "showHudOnStart");
-        col1Y = DrawCompactToggle(canvas, "Click-through", _settings.HudClickThrough, col1X, col1Y, columnWidth, "hudClickThrough");
-        col1Y += SectionSpacing;
-
-        // Appearance section
-        col1Y = DrawSectionHeader(canvas, "APPEARANCE", col1X, col1Y, columnWidth);
-        col1Y = DrawPaletteSelectorCompact(canvas, col1X, col1Y, columnWidth);
-        col1Y += SectionSpacing;
-
-        // Data section
-        col1Y = DrawSectionHeader(canvas, "DATA", col1X, col1Y, columnWidth);
-        col1Y = DrawCompactButton(canvas, "Clear All Slots", col1X, col1Y, columnWidth, "clearAllSlots", true);
-
-        // === COLUMN 2: MIDI ===
-        float col2Y = contentTop;
-
-        // MIDI section
-        col2Y = DrawSectionHeader(canvas, "MIDI", col2X, col2Y, columnWidth);
-        col2Y = DrawMidiSection(canvas, col2X, col2Y, columnWidth);
-        col2Y += SectionSpacing;
-
-        // Hotkeys section
-        col2Y = DrawSectionHeader(canvas, "HOTKEYS", col2X, col2Y, columnWidth);
-        col2Y = DrawHotkeyInfoCompact(canvas, col2X, col2Y, columnWidth);
-        col2Y += 4;
-        col2Y = DrawCompactButton(canvas, "Reset to Defaults", col2X, col2Y, columnWidth, "resetHotkeys", false);
-
-        // === COLUMN 3: Slot Behavior & Sticky Apps ===
-        float col3Y = contentTop;
-
-        // Slot Behavior section
-        col3Y = DrawSectionHeader(canvas, "SLOT BEHAVIOR", col3X, col3Y, columnWidth);
-        col3Y = DrawCompactToggle(canvas, "Auto-promote", _settings.AutoPromote, col3X, col3Y, columnWidth, "autoPromote");
-        col3Y = DrawCompactRadioGroup(canvas, "Promote target:", col3X, col3Y, columnWidth,
-            ("Round Robin", "slotBehaviorRoundRobin", _settings.SlotBehavior == SlotBehavior.RoundRobin),
-            ("Fixed", "slotBehaviorFixed", _settings.SlotBehavior == SlotBehavior.Fixed));
-        col3Y += SectionSpacing;
-
-        // Sticky Apps section
-        col3Y = DrawSectionHeader(canvas, "STICKY APPS", col3X, col3Y, columnWidth);
-        col3Y = DrawStickyAppsSection(canvas, col3X, col3Y, columnWidth);
+        // Draw active tab content
+        switch (_activeTab)
+        {
+            case 0:
+                DrawGeneralTab(canvas, Padding, contentTop, contentWidth, contentHeight);
+                break;
+            case 1:
+                DrawAppearanceTab(canvas, Padding, contentTop, contentWidth, contentHeight);
+                break;
+            case 2:
+                DrawMidiTab(canvas, Padding, contentTop, contentWidth, contentHeight);
+                break;
+            case 3:
+                DrawHotkeysTab(canvas, Padding, contentTop, contentWidth, contentHeight);
+                break;
+        }
 
         // Border
         canvas.DrawRoundRect(bgRect, _borderPaint);
 
         // Draw dropdown overlay last so it appears on top
-        if (_presetDropdownOpen)
+        if (_presetDropdownOpen && _activeTab == 2)
         {
-            DrawPresetDropdownOverlay(canvas, columnWidth);
+            DrawPresetDropdownOverlay(canvas, contentWidth);
         }
 
         canvas.Restore();
@@ -392,6 +403,370 @@ public class SettingsRenderer : BaseRenderer
         float xSize = 5f;
         canvas.DrawLine(cx - xSize, cy - xSize, cx + xSize, cy + xSize, xPaint);
         canvas.DrawLine(cx + xSize, cy - xSize, cx - xSize, cy + xSize, xPaint);
+    }
+
+    private void DrawTabBar(SKCanvas canvas, SKSize size)
+    {
+        float tabY = TitleBarHeight;
+        float tabWidth = size.Width / TabNames.Length;
+        float tabHeight = TabBarHeight;
+
+        // Tab bar background - full width
+        using var tabBarBgPaint = new SKPaint { Color = _theme.TitleBar.WithAlpha(128), IsAntialias = true };
+        canvas.DrawRect(0, tabY, size.Width, tabHeight, tabBarBgPaint);
+
+        for (int i = 0; i < TabNames.Length; i++)
+        {
+            float tabX = i * tabWidth;
+            var tabRect = new SKRect(tabX, tabY, tabX + tabWidth, tabY + tabHeight);
+            bool isActive = _activeTab == i;
+            bool isHovered = _hoveredButton == $"tab{i}";
+
+            // Tab background
+            if (isActive)
+            {
+                using var activePaint = new SKPaint { Color = _theme.Background, IsAntialias = true };
+                canvas.DrawRect(tabRect, activePaint);
+
+                // Active tab underline
+                using var underlinePaint = new SKPaint { Color = _theme.Accent, IsAntialias = true };
+                canvas.DrawRect(tabX, tabY + tabHeight - 2, tabWidth, 2, underlinePaint);
+            }
+            else if (isHovered)
+            {
+                using var hoverPaint = new SKPaint { Color = _theme.ButtonHover, IsAntialias = true };
+                canvas.DrawRect(tabRect, hoverPaint);
+            }
+
+            // Tab text
+            using var textPaint = new SKPaint
+            {
+                Color = isActive ? _theme.Accent : _theme.TextSecondary,
+                IsAntialias = true,
+                TextSize = 12f,
+                TextAlign = SKTextAlign.Center,
+                Typeface = SKTypeface.FromFamilyName("Segoe UI", isActive ? SKFontStyle.Bold : SKFontStyle.Normal)
+            };
+            canvas.DrawText(TabNames[i], tabRect.MidX, tabRect.MidY + textPaint.TextSize / 3, textPaint);
+
+            _buttons.Add(new ButtonRect($"tab{i}", tabRect));
+        }
+    }
+
+    private void DrawGeneralTab(SKCanvas canvas, float x, float y, float width, float height)
+    {
+        // Startup section
+        y = DrawSectionHeader(canvas, "STARTUP", x, y, width);
+        y = DrawCompactToggle(canvas, "Start with Windows", _settings.StartWithWindows, x, y, width, "startWithWindows");
+        y = DrawCompactToggle(canvas, "Start minimized", _settings.StartMinimized, x, y, width, "startMinimized");
+        y += SectionSpacing;
+
+        // HUD section
+        y = DrawSectionHeader(canvas, "HUD", x, y, width);
+        y = DrawCompactToggle(canvas, "Show on start", _settings.ShowHudOnStart, x, y, width, "showHudOnStart");
+        y = DrawCompactToggle(canvas, "Click-through", _settings.HudClickThrough, x, y, width, "hudClickThrough");
+        y += SectionSpacing;
+
+        // Data section
+        y = DrawSectionHeader(canvas, "DATA", x, y, width);
+        DrawCompactButton(canvas, "Clear All Slots", x, y, width, "clearAllSlots", true);
+    }
+
+    private void DrawAppearanceTab(SKCanvas canvas, float x, float y, float width, float height)
+    {
+        // Appearance section
+        y = DrawSectionHeader(canvas, "THEME", x, y, width);
+        y = DrawPaletteSelectorCompact(canvas, x, y, width);
+        y += SectionSpacing;
+
+        // Slot Behavior section
+        y = DrawSectionHeader(canvas, "SLOT BEHAVIOR", x, y, width);
+        y = DrawCompactToggle(canvas, "Auto-promote temp slot", _settings.AutoPromote, x, y, width, "autoPromote");
+        y = DrawCompactRadioGroup(canvas, "Promote target:", x, y, width,
+            ("Round Robin", "slotBehaviorRoundRobin", _settings.SlotBehavior == SlotBehavior.RoundRobin),
+            ("Fixed", "slotBehaviorFixed", _settings.SlotBehavior == SlotBehavior.Fixed));
+        y += SectionSpacing;
+
+        // Sticky Apps section
+        y = DrawSectionHeader(canvas, "STICKY APPS", x, y, width);
+        DrawStickyAppsSection(canvas, x, y, width);
+    }
+
+    private void DrawMidiTab(SKCanvas canvas, float x, float y, float width, float height)
+    {
+        // MIDI section
+        y = DrawSectionHeader(canvas, "MIDI CONTROLLER", x, y, width);
+        y = DrawMidiSection(canvas, x, y, width);
+    }
+
+    private void DrawHotkeysTab(SKCanvas canvas, float x, float y, float width, float height)
+    {
+        // Set up scroll area
+        _hotkeyScrollArea = new SKRect(x, y, x + width, y + height - 40);
+
+        // Calculate content height
+        var categories = GetHotkeyCategories();
+        float itemHeight = 24f;
+        float categorySpacing = 16f;
+        float totalHeight = 0;
+        foreach (var (category, items) in categories)
+        {
+            totalHeight += 18; // header
+            totalHeight += items.Count * itemHeight;
+            totalHeight += categorySpacing;
+        }
+        _hotkeyContentHeight = totalHeight;
+
+        // Clip and draw hotkeys
+        canvas.Save();
+        canvas.ClipRect(_hotkeyScrollArea);
+
+        float contentY = y - _hotkeyScrollOffset;
+        foreach (var (category, items) in categories)
+        {
+            contentY = DrawHotkeyCategory(canvas, category, items, x, contentY, width, itemHeight);
+            contentY += categorySpacing;
+        }
+
+        canvas.Restore();
+
+        // Draw scrollbar if needed
+        if (_hotkeyContentHeight > _hotkeyScrollArea.Height)
+        {
+            DrawScrollbar(canvas, _hotkeyScrollArea, _hotkeyScrollOffset, _hotkeyContentHeight);
+        }
+
+        // Reset button at bottom
+        float btnY = y + height - 30;
+        DrawCompactButton(canvas, "Reset to Defaults", x, btnY, width, "resetHotkeys", false);
+    }
+
+    private List<(string Category, List<HotkeyDisplayItem> Items)> GetHotkeyCategories()
+    {
+        var categories = new List<(string Category, List<HotkeyDisplayItem> Items)>();
+
+        // Navigation
+        var navigation = new List<HotkeyDisplayItem>
+        {
+            new("Toggle HUD", "ToggleHud"),
+            new("Cycle Forward", "CycleForward"),
+            new("Cycle Backward", "CycleBackward"),
+            new("Promote Temp", "PromoteTempSlot"),
+            new("Paste Active", "PasteFromActiveSlot"),
+        };
+        categories.Add(("Navigation", navigation));
+
+        // Copy to Slot - combine regular and numpad
+        var copySlots = new List<HotkeyDisplayItem>();
+        for (int i = 1; i <= 10; i++)
+        {
+            copySlots.Add(new($"Copy to Slot {i}", $"CopyToSlot{i}", $"CopyToSlotNumpad{i}"));
+        }
+        categories.Add(("Copy to Slot", copySlots));
+
+        // Paste from Slot - combine regular and numpad
+        var pasteSlots = new List<HotkeyDisplayItem>();
+        for (int i = 1; i <= 10; i++)
+        {
+            pasteSlots.Add(new($"Paste Slot {i}", $"PasteFromSlot{i}", $"PasteFromSlotNumpad{i}"));
+        }
+        categories.Add(("Paste from Slot", pasteSlots));
+
+        // Processor Toggles
+        var processors = new List<HotkeyDisplayItem>();
+        foreach (var def in ProcessorDefinitions.All)
+        {
+            processors.Add(new($"Toggle {def.DisplayName}", $"ToggleProcessor{def.Name}"));
+        }
+        categories.Add(("Processor Toggles", processors));
+
+        return categories;
+    }
+
+    private record HotkeyDisplayItem(string Name, string PrimaryId, string? SecondaryId = null);
+
+    private float DrawHotkeyCategory(SKCanvas canvas, string category, List<HotkeyDisplayItem> items, float x, float y, float width, float itemHeight)
+    {
+        // Skip if completely off screen
+        if (y > _hotkeyScrollArea.Bottom || y + 18 + items.Count * itemHeight < _hotkeyScrollArea.Top)
+        {
+            return y + 18 + items.Count * itemHeight;
+        }
+
+        // Category header
+        using var headerPaint = new SKPaint
+        {
+            Color = _theme.Accent,
+            IsAntialias = true,
+            TextSize = 10f,
+            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
+        };
+        canvas.DrawText(category, x, y + headerPaint.TextSize, headerPaint);
+        y += 18;
+
+        // Items
+        foreach (var item in items)
+        {
+            if (y < _hotkeyScrollArea.Top - itemHeight || y > _hotkeyScrollArea.Bottom)
+            {
+                y += itemHeight;
+                continue;
+            }
+
+            var itemRect = new SKRect(x, y, x + width, y + itemHeight - 2);
+            bool isPrimaryHovered = _hoveredButton == $"editHotkey_{item.PrimaryId}";
+            bool isSecondaryHovered = item.SecondaryId != null && _hoveredButton == $"editHotkey_{item.SecondaryId}";
+            bool isPrimaryEditing = _editingHotkeyId == item.PrimaryId;
+            bool isSecondaryEditing = item.SecondaryId != null && _editingHotkeyId == item.SecondaryId;
+
+            // Background for whole row on hover/edit
+            if (isPrimaryEditing || isSecondaryEditing)
+            {
+                using var editBgPaint = new SKPaint { Color = _theme.Accent.WithAlpha(30), IsAntialias = true };
+                canvas.DrawRoundRect(new SKRoundRect(itemRect, 3), editBgPaint);
+            }
+            else if (isPrimaryHovered || isSecondaryHovered)
+            {
+                using var hoverBgPaint = new SKPaint { Color = _theme.ButtonHover.WithAlpha(128), IsAntialias = true };
+                canvas.DrawRoundRect(new SKRoundRect(itemRect, 3), hoverBgPaint);
+            }
+
+            // Action name (left side)
+            using var namePaint = new SKPaint
+            {
+                Color = _theme.Text,
+                IsAntialias = true,
+                TextSize = 10f,
+                Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
+            };
+            float nameWidth = namePaint.MeasureText(item.Name);
+            canvas.DrawText(item.Name, x + 4, y + itemHeight / 2 + 3, namePaint);
+
+            // Bindings start after name with small gap
+            float bindingX = x + nameWidth + 16;
+            float bindingY = y + itemHeight / 2 + 3;
+
+            using var bindingPaint = new SKPaint
+            {
+                Color = _theme.TextSecondary,
+                IsAntialias = true,
+                TextSize = 9f,
+                Typeface = SKTypeface.FromFamilyName("Consolas", SKFontStyle.Normal)
+            };
+
+            // Primary binding
+            string primaryText;
+            if (isPrimaryEditing)
+            {
+                primaryText = "Press keys...";
+                bindingPaint.Color = _theme.Accent;
+            }
+            else if (_settings.HotkeyBindings.TryGetValue(item.PrimaryId, out var primaryBinding))
+            {
+                primaryText = FormatHotkeyBinding(primaryBinding);
+            }
+            else
+            {
+                primaryText = "Not set";
+            }
+
+            // Draw primary binding with click area
+            float primaryWidth = bindingPaint.MeasureText(primaryText);
+            var primaryRect = new SKRect(bindingX - 4, y, bindingX + primaryWidth + 4, y + itemHeight - 2);
+
+            if (isPrimaryHovered && !isPrimaryEditing)
+            {
+                using var pillPaint = new SKPaint { Color = _theme.Accent.WithAlpha(40), IsAntialias = true };
+                canvas.DrawRoundRect(new SKRoundRect(primaryRect, 3), pillPaint);
+            }
+
+            canvas.DrawText(primaryText, bindingX, bindingY, bindingPaint);
+            _buttons.Add(new ButtonRect($"editHotkey_{item.PrimaryId}", primaryRect));
+            bindingX += primaryWidth + 8;
+
+            // Secondary binding (numpad) if exists
+            if (item.SecondaryId != null)
+            {
+                bindingPaint.Color = _theme.TextSecondary;
+
+                string secondaryText;
+                if (isSecondaryEditing)
+                {
+                    secondaryText = "Press...";
+                    bindingPaint.Color = _theme.Accent;
+                }
+                else if (_settings.HotkeyBindings.TryGetValue(item.SecondaryId, out var secondaryBinding))
+                {
+                    secondaryText = FormatHotkeyBinding(secondaryBinding);
+                }
+                else
+                {
+                    secondaryText = "";
+                }
+
+                if (!string.IsNullOrEmpty(secondaryText))
+                {
+                    float secondaryWidth = bindingPaint.MeasureText(secondaryText);
+                    var secondaryRect = new SKRect(bindingX - 4, y, bindingX + secondaryWidth + 4, y + itemHeight - 2);
+
+                    if (isSecondaryHovered && !isSecondaryEditing)
+                    {
+                        using var pillPaint = new SKPaint { Color = _theme.Accent.WithAlpha(40), IsAntialias = true };
+                        canvas.DrawRoundRect(new SKRoundRect(secondaryRect, 3), pillPaint);
+                    }
+
+                    canvas.DrawText(secondaryText, bindingX, bindingY, bindingPaint);
+                    _buttons.Add(new ButtonRect($"editHotkey_{item.SecondaryId}", secondaryRect));
+                }
+            }
+
+            y += itemHeight;
+        }
+
+        return y;
+    }
+
+    private string FormatHotkeyBinding(HotkeyBinding binding)
+    {
+        var parts = new List<string>();
+        if (binding.Modifiers.HasFlag(ModifierKeys.Control)) parts.Add("Ctrl");
+        if (binding.Modifiers.HasFlag(ModifierKeys.Alt)) parts.Add("Alt");
+        if (binding.Modifiers.HasFlag(ModifierKeys.Shift)) parts.Add("Shift");
+        if (binding.Modifiers.HasFlag(ModifierKeys.Win)) parts.Add("Win");
+        parts.Add(FormatVirtualKey(binding.Key));
+        return string.Join("+", parts);
+    }
+
+    private string FormatVirtualKey(VirtualKey key)
+    {
+        return key switch
+        {
+            >= VirtualKey.D0 and <= VirtualKey.D9 => ((int)key - (int)VirtualKey.D0).ToString(),
+            >= VirtualKey.NumPad0 and <= VirtualKey.NumPad9 => $"Num{(int)key - (int)VirtualKey.NumPad0}",
+            VirtualKey.Up => "↑",
+            VirtualKey.Down => "↓",
+            VirtualKey.Left => "←",
+            VirtualKey.Right => "→",
+            _ => key.ToString()
+        };
+    }
+
+    private void DrawScrollbar(SKCanvas canvas, SKRect scrollArea, float offset, float contentHeight)
+    {
+        float scrollbarWidth = 6f;
+        float scrollbarX = scrollArea.Right - scrollbarWidth - 2;
+        float trackHeight = scrollArea.Height;
+        float thumbHeight = Math.Max(20, trackHeight * (scrollArea.Height / contentHeight));
+        float maxOffset = contentHeight - scrollArea.Height;
+        float thumbY = scrollArea.Top + (offset / maxOffset) * (trackHeight - thumbHeight);
+
+        // Track
+        using var trackPaint = new SKPaint { Color = _theme.SlotBackground, IsAntialias = true };
+        canvas.DrawRoundRect(new SKRoundRect(new SKRect(scrollbarX, scrollArea.Top, scrollbarX + scrollbarWidth, scrollArea.Bottom), 3), trackPaint);
+
+        // Thumb
+        using var thumbPaint = new SKPaint { Color = _theme.TextSecondary.WithAlpha(128), IsAntialias = true };
+        canvas.DrawRoundRect(new SKRoundRect(new SKRect(scrollbarX, thumbY, scrollbarX + scrollbarWidth, thumbY + thumbHeight), 3), thumbPaint);
     }
 
     private float DrawSectionHeader(SKCanvas canvas, string title, float x, float y, float width)
@@ -497,7 +872,7 @@ public class SettingsRenderer : BaseRenderer
     private float DrawCompactButton(SKCanvas canvas, string label, float x, float y, float width, string id, bool isDanger = false)
     {
         float btnHeight = 26f;
-        float btnWidth = Math.Min(width, 110f);
+        float btnWidth = Math.Min(width, 140f);
 
         var btnRect = new SKRect(x, y, x + btnWidth, y + btnHeight);
 
@@ -524,11 +899,10 @@ public class SettingsRenderer : BaseRenderer
 
     private float DrawPaletteSelectorCompact(SKCanvas canvas, float x, float y, float width)
     {
-        // Calculate swatch size based on available width
-        float swatchSpacing = 6f;
+        float swatchSpacing = 8f;
         float availableWidth = width - swatchSpacing * 2;
-        float swatchWidth = Math.Min(56f, availableWidth / 3);
-        float swatchHeight = 36f;
+        float swatchWidth = Math.Min(100f, availableWidth / 3);
+        float swatchHeight = 50f;
 
         var palettes = new[]
         {
@@ -550,14 +924,14 @@ public class SettingsRenderer : BaseRenderer
             canvas.DrawRoundRect(new SKRoundRect(swatchRect, 4), bgPaint);
 
             // Mini slot
-            float miniSlotY = y + 5;
-            var miniSlotRect = new SKRect(startX + 4, miniSlotY, startX + swatchWidth - 4, miniSlotY + 8);
+            float miniSlotY = y + 6;
+            var miniSlotRect = new SKRect(startX + 6, miniSlotY, startX + swatchWidth - 6, miniSlotY + 10);
             using var slotPaint = new SKPaint { Color = theme.SlotBackground, IsAntialias = true };
             canvas.DrawRoundRect(new SKRoundRect(miniSlotRect, 2), slotPaint);
 
             // Accent bar
-            float accentY = miniSlotY + 10;
-            var accentRect = new SKRect(startX + 4, accentY, startX + swatchWidth - 4, accentY + 5);
+            float accentY = miniSlotY + 12;
+            var accentRect = new SKRect(startX + 6, accentY, startX + swatchWidth - 6, accentY + 6);
             using var accentPaint = new SKPaint { Color = theme.Accent, IsAntialias = true };
             canvas.DrawRoundRect(new SKRoundRect(accentRect, 2), accentPaint);
 
@@ -566,11 +940,11 @@ public class SettingsRenderer : BaseRenderer
             {
                 Color = theme.Text,
                 IsAntialias = true,
-                TextSize = 7f,
+                TextSize = 8f,
                 TextAlign = SKTextAlign.Center,
                 Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
             };
-            canvas.DrawText("Abc", swatchRect.MidX, accentY + 14, textPaint);
+            canvas.DrawText("Abc", swatchRect.MidX, accentY + 18, textPaint);
 
             // Border
             var borderColor = isSelected ? _theme.Accent : (isHovered ? _theme.Accent.WithAlpha(150) : _theme.Border);
@@ -617,16 +991,13 @@ public class SettingsRenderer : BaseRenderer
         float itemHeight = 22f;
         float buttonSize = 18f;
 
-        // Description
         canvas.DrawText("Apps that reuse a single slot:", x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
         y += _secondaryTextPaint.TextSize + 6;
 
-        // List of sticky apps
         foreach (var app in _settings.StickyApps)
         {
             var itemRect = new SKRect(x, y, x + width, y + itemHeight);
 
-            // Background
             bool isHovered = _hoveredButton == $"removeStickyApp_{app}";
             using var itemBgPaint = new SKPaint
             {
@@ -635,7 +1006,6 @@ public class SettingsRenderer : BaseRenderer
             };
             canvas.DrawRoundRect(new SKRoundRect(itemRect, 3), itemBgPaint);
 
-            // App name
             using var appPaint = new SKPaint
             {
                 Color = _theme.Text,
@@ -644,7 +1014,6 @@ public class SettingsRenderer : BaseRenderer
                 Typeface = SKTypeface.FromFamilyName("Consolas", SKFontStyle.Normal)
             };
 
-            // Truncate if needed
             string displayName = app;
             float maxTextWidth = width - buttonSize - 16;
             while (appPaint.MeasureText(displayName) > maxTextWidth && displayName.Length > 3)
@@ -653,7 +1022,6 @@ public class SettingsRenderer : BaseRenderer
             }
             canvas.DrawText(displayName, x + 6, y + itemHeight / 2 + 4, appPaint);
 
-            // Remove button (X)
             var removeRect = new SKRect(x + width - buttonSize - 2, y + (itemHeight - buttonSize) / 2,
                                         x + width - 2, y + (itemHeight + buttonSize) / 2);
 
@@ -664,7 +1032,6 @@ public class SettingsRenderer : BaseRenderer
             };
             canvas.DrawRoundRect(new SKRoundRect(removeRect, 3), removeBgPaint);
 
-            // X icon
             using var xPaint = new SKPaint
             {
                 Color = isHovered ? _theme.Text : _theme.TextSecondary,
@@ -682,12 +1049,10 @@ public class SettingsRenderer : BaseRenderer
             y += itemHeight + 2;
         }
 
-        // Input field for adding new app
         y += 4;
         _stickyAppInputRect = new SKRect(x, y, x + width - 40, y + inputHeight);
         var addButtonRect = new SKRect(x + width - 36, y, x + width, y + inputHeight);
 
-        // Input field background
         using var inputBgPaint = new SKPaint
         {
             Color = _stickyAppInputFocused ? _theme.Background : _theme.SlotBackground,
@@ -695,7 +1060,6 @@ public class SettingsRenderer : BaseRenderer
         };
         canvas.DrawRoundRect(new SKRoundRect(_stickyAppInputRect, 3), inputBgPaint);
 
-        // Input field border
         using var inputBorderPaint = new SKPaint
         {
             Color = _stickyAppInputFocused ? _theme.Accent : _theme.Border,
@@ -705,7 +1069,6 @@ public class SettingsRenderer : BaseRenderer
         };
         canvas.DrawRoundRect(new SKRoundRect(_stickyAppInputRect, 3), inputBorderPaint);
 
-        // Input text or placeholder
         using var inputTextPaint = new SKPaint
         {
             Color = string.IsNullOrEmpty(_stickyAppInput) ? _theme.TextSecondary : _theme.Text,
@@ -715,7 +1078,6 @@ public class SettingsRenderer : BaseRenderer
         };
         string displayText = string.IsNullOrEmpty(_stickyAppInput) ? "Process name..." : _stickyAppInput;
 
-        // Add cursor if focused
         if (_stickyAppInputFocused && !string.IsNullOrEmpty(_stickyAppInput))
         {
             displayText = _stickyAppInput + "|";
@@ -729,7 +1091,6 @@ public class SettingsRenderer : BaseRenderer
         canvas.DrawText(displayText, x + 6, y + inputHeight / 2 + 4, inputTextPaint);
         _buttons.Add(new ButtonRect("stickyAppInput", _stickyAppInputRect));
 
-        // Add button
         bool addHovered = _hoveredButton == "addStickyApp";
         using var addBgPaint = new SKPaint
         {
@@ -751,57 +1112,20 @@ public class SettingsRenderer : BaseRenderer
 
         y += inputHeight + 4;
 
-        // Helper text
         canvas.DrawText("Check console for process names", x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
         y += _secondaryTextPaint.TextSize;
 
         return y + ItemSpacing;
     }
 
-    private float DrawHotkeyInfoCompact(SKCanvas canvas, float x, float y, float width)
-    {
-        var hotkeys = new[]
-        {
-            ("Copy to slot", "Ctrl+Alt+1-0"),
-            ("Paste from slot", "Ctrl+Shift+1-0"),
-            ("Promote temp", "Ctrl+Alt+C"),
-            ("Paste active", "Ctrl+Alt+V"),
-            ("Cycle slots", "Ctrl+Alt+↑↓"),
-            ("Toggle HUD", "Ctrl+Alt+H"),
-        };
-
-        using var keyPaint = new SKPaint
-        {
-            Color = _theme.TextSecondary,
-            IsAntialias = true,
-            TextSize = 10f,
-            TextAlign = SKTextAlign.Right,
-            Typeface = SKTypeface.FromFamilyName("Consolas", SKFontStyle.Normal)
-        };
-
-        foreach (var (action, keys) in hotkeys)
-        {
-            canvas.DrawText(action, x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
-            canvas.DrawText(keys, x + width, y + _secondaryTextPaint.TextSize, keyPaint);
-            y += _secondaryTextPaint.TextSize + 5;
-        }
-
-        y += 4;
-        canvas.DrawText("Edit config.json to customize", x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
-
-        return y + _secondaryTextPaint.TextSize + ItemSpacing;
-    }
-
     private float DrawMidiSection(SKCanvas canvas, float x, float y, float width)
     {
-        // Enable/Disable toggle
         y = DrawCompactToggle(canvas, "Enable MIDI", _settings.MidiSettings.Enabled, x, y, width, "midiEnabled");
 
-        // Connection status indicator
         float statusY = y;
         using var statusPaint = new SKPaint
         {
-            Color = _midiConnected ? new SKColor(0x4C, 0xAF, 0x50) : _theme.TextSecondary, // Green if connected
+            Color = _midiConnected ? new SKColor(0x4C, 0xAF, 0x50) : _theme.TextSecondary,
             IsAntialias = true,
             TextSize = 10f,
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
@@ -818,13 +1142,11 @@ public class SettingsRenderer : BaseRenderer
         canvas.DrawText(statusText, x + indicatorSize + 6, statusY + statusPaint.TextSize, statusPaint);
         y = statusY + 18;
 
-        // Only show device and preset selection if MIDI is enabled
         if (!_settings.MidiSettings.Enabled)
         {
             return y + ItemSpacing;
         }
 
-        // Device selection
         y += 4;
         canvas.DrawText("Device:", x, y + _textPaint.TextSize, _textPaint);
         y += _textPaint.TextSize + 4;
@@ -844,7 +1166,6 @@ public class SettingsRenderer : BaseRenderer
                 float itemHeight = 22f;
                 var itemRect = new SKRect(x, y, x + width, y + itemHeight);
 
-                // Background for selected/hovered
                 if (isSelected || isHovered)
                 {
                     var bgColor = isSelected ? _theme.Accent.WithAlpha(60) : _theme.Button;
@@ -852,7 +1173,6 @@ public class SettingsRenderer : BaseRenderer
                     canvas.DrawRoundRect(new SKRoundRect(itemRect, 3), bgPaint);
                 }
 
-                // Selection indicator
                 if (isSelected)
                 {
                     using var checkPaint = new SKPaint
@@ -865,7 +1185,6 @@ public class SettingsRenderer : BaseRenderer
                     canvas.DrawText("✓", x + 4, y + 15, checkPaint);
                 }
 
-                // Device name
                 float textX = x + (isSelected ? 18 : 8);
                 using var devicePaint = new SKPaint
                 {
@@ -875,7 +1194,6 @@ public class SettingsRenderer : BaseRenderer
                     Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
                 };
 
-                // Truncate long device names
                 string displayName = device;
                 float maxTextWidth = width - 24;
                 while (devicePaint.MeasureText(displayName) > maxTextWidth && displayName.Length > 3)
@@ -889,11 +1207,113 @@ public class SettingsRenderer : BaseRenderer
             }
         }
 
-        // Preset selection - dropdown style
         y += 8;
         y = DrawPresetDropdown(canvas, x, y, width);
+        y += SectionSpacing;
+
+        // Processor Chords section
+        y = DrawProcessorChordsSection(canvas, x, y, width);
 
         return y + ItemSpacing;
+    }
+
+    private float DrawProcessorChordsSection(SKCanvas canvas, float x, float y, float width)
+    {
+        // Section header
+        using var headerPaint = new SKPaint
+        {
+            Color = _theme.Accent,
+            IsAntialias = true,
+            TextSize = 10f,
+            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
+        };
+        canvas.DrawText("PROCESSOR CHORDS", x, y + headerPaint.TextSize, headerPaint);
+        float textWidth = headerPaint.MeasureText("PROCESSOR CHORDS");
+        using var linePaint = new SKPaint
+        {
+            Color = _theme.Accent.WithAlpha(80),
+            IsAntialias = true,
+            StrokeWidth = 1f
+        };
+        canvas.DrawLine(x, y + headerPaint.TextSize + 3, x + textWidth, y + headerPaint.TextSize + 3, linePaint);
+        y += headerPaint.TextSize + 10;
+
+        // Get effective processor chords from preset and custom settings
+        var presets = _midiPresets?.GetAllPresets() ?? Array.Empty<MidiControlScheme>();
+        var currentPreset = presets.FirstOrDefault(p => p.Name == _settings.MidiSettings.ActivePreset);
+        var effectiveChords = new Dictionary<string, MidiTrigger>();
+
+        // Start with preset chords
+        if (currentPreset?.ProcessorChords != null)
+        {
+            foreach (var kvp in currentPreset.ProcessorChords)
+                effectiveChords[kvp.Key] = kvp.Value;
+        }
+
+        // Override with custom settings
+        if (_settings.MidiSettings.ProcessorChords != null)
+        {
+            foreach (var kvp in _settings.MidiSettings.ProcessorChords)
+                effectiveChords[kvp.Key] = kvp.Value;
+        }
+
+        if (effectiveChords.Count == 0)
+        {
+            canvas.DrawText("No processor chords configured", x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
+            y += _secondaryTextPaint.TextSize + 4;
+            canvas.DrawText("Use Edit to add MIDI triggers for processors", x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
+            y += _secondaryTextPaint.TextSize;
+        }
+        else
+        {
+            float itemHeight = 20f;
+            foreach (var (processorName, trigger) in effectiveChords)
+            {
+                // Get display name from ProcessorDefinitions
+                var def = ProcessorDefinitions.GetByName(processorName);
+                string displayName = def?.DisplayName ?? processorName;
+
+                // Format trigger info
+                string triggerText = FormatMidiTrigger(trigger);
+
+                // Draw item
+                using var namePaint = new SKPaint
+                {
+                    Color = _theme.Text,
+                    IsAntialias = true,
+                    TextSize = 10f,
+                    Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
+                };
+                canvas.DrawText(displayName, x + 4, y + itemHeight / 2 + 3, namePaint);
+
+                using var triggerPaint = new SKPaint
+                {
+                    Color = _theme.TextSecondary,
+                    IsAntialias = true,
+                    TextSize = 9f,
+                    TextAlign = SKTextAlign.Right,
+                    Typeface = SKTypeface.FromFamilyName("Consolas", SKFontStyle.Normal)
+                };
+                canvas.DrawText(triggerText, x + width - 4, y + itemHeight / 2 + 3, triggerPaint);
+
+                y += itemHeight;
+            }
+        }
+
+        return y;
+    }
+
+    private static string FormatMidiTrigger(MidiTrigger trigger)
+    {
+        string type = trigger.Type switch
+        {
+            MidiTriggerType.NoteOn => "Note",
+            MidiTriggerType.NoteOff => "NoteOff",
+            MidiTriggerType.ControlChange => "CC",
+            _ => "?"
+        };
+        string channel = trigger.Channel.HasValue ? $"Ch{trigger.Channel + 1}" : "Any";
+        return $"{type} {trigger.Number} ({channel})";
     }
 
     private float DrawPresetDropdown(SKCanvas canvas, float x, float y, float width)
@@ -902,10 +1322,8 @@ public class SettingsRenderer : BaseRenderer
         float buttonWidth = 36f;
         float buttonSpacing = 4f;
 
-        // Label with Edit/New buttons on the right
         canvas.DrawText("Preset:", x, y + _textPaint.TextSize, _textPaint);
 
-        // New button
         float btnY = y - 2;
         float newBtnX = x + width - buttonWidth;
         var newRect = new SKRect(newBtnX, btnY, newBtnX + buttonWidth, btnY + 20f);
@@ -927,7 +1345,6 @@ public class SettingsRenderer : BaseRenderer
         canvas.DrawText("New", newRect.MidX, newRect.MidY + 3, btnTextPaint);
         _buttons.Add(new ButtonRect("newMidiPreset", newRect));
 
-        // Edit button
         float editBtnX = newBtnX - buttonWidth - buttonSpacing;
         var editRect = new SKRect(editBtnX, btnY, editBtnX + buttonWidth, btnY + 20f);
         bool editHovered = _hoveredButton == "editMidiPreset";
@@ -942,17 +1359,14 @@ public class SettingsRenderer : BaseRenderer
 
         y += _textPaint.TextSize + 4;
 
-        // Get current preset name
         var presets = _midiPresets?.GetAllPresets() ?? Array.Empty<MidiControlScheme>();
         var currentPreset = presets.FirstOrDefault(p => p.Name == _settings.MidiSettings.ActivePreset);
         string displayName = currentPreset?.Name ?? _settings.MidiSettings.ActivePreset ?? "Select...";
 
-        // Dropdown button
         var dropdownRect = new SKRect(x, y, x + width, y + dropdownHeight);
-        _presetDropdownAnchor = dropdownRect; // Store for overlay positioning
+        _presetDropdownAnchor = dropdownRect;
         bool isHovered = _hoveredButton == "presetDropdownToggle";
 
-        // Background
         using var bgPaint = new SKPaint
         {
             Color = isHovered ? _theme.ButtonHover : _theme.Button,
@@ -960,7 +1374,6 @@ public class SettingsRenderer : BaseRenderer
         };
         canvas.DrawRoundRect(new SKRoundRect(dropdownRect, 4), bgPaint);
 
-        // Border
         using var borderPaint = new SKPaint
         {
             Color = _presetDropdownOpen ? _theme.Accent : _theme.Border,
@@ -970,7 +1383,6 @@ public class SettingsRenderer : BaseRenderer
         };
         canvas.DrawRoundRect(new SKRoundRect(dropdownRect, 4), borderPaint);
 
-        // Text
         using var textPaint = new SKPaint
         {
             Color = _theme.Text,
@@ -980,7 +1392,6 @@ public class SettingsRenderer : BaseRenderer
         };
         canvas.DrawText(displayName, x + 8, y + dropdownHeight / 2 + 4, textPaint);
 
-        // Dropdown arrow
         float arrowX = x + width - 16;
         float arrowY = y + dropdownHeight / 2;
         using var arrowPaint = new SKPaint
@@ -993,13 +1404,11 @@ public class SettingsRenderer : BaseRenderer
         };
         if (_presetDropdownOpen)
         {
-            // Up arrow
             canvas.DrawLine(arrowX - 4, arrowY + 2, arrowX, arrowY - 2, arrowPaint);
             canvas.DrawLine(arrowX, arrowY - 2, arrowX + 4, arrowY + 2, arrowPaint);
         }
         else
         {
-            // Down arrow
             canvas.DrawLine(arrowX - 4, arrowY - 2, arrowX, arrowY + 2, arrowPaint);
             canvas.DrawLine(arrowX, arrowY + 2, arrowX + 4, arrowY - 2, arrowPaint);
         }
@@ -1021,7 +1430,6 @@ public class SettingsRenderer : BaseRenderer
         float menuHeight = presets.Count * itemHeight + 4;
         var menuRect = new SKRect(x, y, x + width, y + menuHeight);
 
-        // Shadow
         using var shadowPaint = new SKPaint
         {
             Color = new SKColor(0, 0, 0, 40),
@@ -1030,7 +1438,6 @@ public class SettingsRenderer : BaseRenderer
         };
         canvas.DrawRoundRect(new SKRoundRect(new SKRect(x + 2, y + 2, x + width + 2, y + menuHeight + 2), 4), shadowPaint);
 
-        // Menu background
         using var menuBgPaint = new SKPaint
         {
             Color = _theme.Background,
@@ -1038,7 +1445,6 @@ public class SettingsRenderer : BaseRenderer
         };
         canvas.DrawRoundRect(new SKRoundRect(menuRect, 4), menuBgPaint);
 
-        // Menu border
         using var menuBorderPaint = new SKPaint
         {
             Color = _theme.Border,
@@ -1056,7 +1462,6 @@ public class SettingsRenderer : BaseRenderer
 
             var itemRect = new SKRect(x + 2, itemY, x + width - 2, itemY + itemHeight);
 
-            // Item hover/selected background
             if (itemHovered || isSelected)
             {
                 var itemBgColor = isSelected ? _theme.Accent.WithAlpha(60) : _theme.ButtonHover;
@@ -1064,7 +1469,6 @@ public class SettingsRenderer : BaseRenderer
                 canvas.DrawRoundRect(new SKRoundRect(itemRect, 3), itemBgPaint);
             }
 
-            // Item text
             using var itemTextPaint = new SKPaint
             {
                 Color = isSelected ? _theme.Text : _theme.TextSecondary,

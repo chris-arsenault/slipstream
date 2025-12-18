@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Threading;
 using Slipstream.Commands;
 using Slipstream.Models;
+using Slipstream.Processing;
 using Slipstream.Services;
 using Slipstream.UI;
 
@@ -12,6 +13,7 @@ public partial class App : Application
     private MessageWindow? _messageWindow;
     private TrayManager? _trayManager;
     private HudWindow? _hudWindow;
+    private MidiDebugWindow? _midiDebugWindow;
     private ConfigService? _configService;
     private AppSettings? _settings;
     private SlotManager? _slotManager;
@@ -25,6 +27,9 @@ public partial class App : Application
     private HashSet<string>? _stickyApps;
     private CommandRegistry? _commandRegistry;
     private CommandContext? _commandContext;
+    private ProcessorToggleState? _processorToggleState;
+    private ProcessorActivation? _processorActivation;
+    private ProcessorRegistry? _processorRegistry;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -48,6 +53,11 @@ public partial class App : Application
         // Initialize sticky apps from settings (case-insensitive)
         _stickyApps = new HashSet<string>(_settings.StickyApps, StringComparer.OrdinalIgnoreCase);
 
+        // Initialize processor toggle state
+        _processorToggleState = new ProcessorToggleState();
+        _processorActivation = new ProcessorActivation(_processorToggleState);
+        _processorRegistry = new ProcessorRegistry();
+
         _keyboardSequencer = new KeyboardSequencer(new KeyboardSimulator());
         _pasteEngine = new PasteEngine(_keyboardSequencer);
 
@@ -60,6 +70,8 @@ public partial class App : Application
 
         // Create HUD window
         _hudWindow = new HudWindow(_slotManager, _configService, _settings);
+        _hudWindow.SetProcessorToggleState(_processorToggleState);
+        _hudWindow.SetProcessorActivation(_processorActivation);
 
         // Initialize command system
         _commandContext = new CommandContext(
@@ -67,9 +79,12 @@ public partial class App : Application
             _clipboardMonitor,
             _pasteEngine,
             _keyboardSequencer,
+            _processorToggleState,
+            _processorActivation,
+            _processorRegistry,
             _hudWindow,
             _stickyApps);
-        _commandRegistry = new CommandRegistry(_commandContext);
+        _commandRegistry = new CommandRegistry(_commandContext, _processorRegistry);
 
         // Initialize hotkey manager using message window
         _hotkeyManager = new HotkeyManager(hwnd, hwndSource, _commandRegistry);
@@ -79,14 +94,19 @@ public partial class App : Application
         _midiPresets = new MidiPresets(_configService);
         _midiManager = new MidiManager(_settings.MidiSettings, _midiPresets, _commandRegistry);
         _midiManager.DeviceChanged += OnMidiDeviceChanged;
+        _midiManager.ProcessorChordsChanged += (_, _) => _hudWindow?.Refresh();
         _midiManager.Start();
+
+        // Connect MIDI chord provider to processor activation
+        _processorActivation.SetMidiChordProvider(() => _midiManager.HeldProcessorChords);
 
         // Initialize tray
         _trayManager = new TrayManager(
             onShowHud: () => _hudWindow?.Show(),
             onHideHud: () => _hudWindow?.Hide(),
             onOpenSettings: OpenSettings,
-            onQuit: Shutdown
+            onQuit: Shutdown,
+            onToggleMidiDebug: ToggleMidiDebug
         );
 
         // Start clipboard monitoring (always on)
@@ -163,6 +183,29 @@ public partial class App : Application
         settingsWindow.Show();
     }
 
+    private void ToggleMidiDebug()
+    {
+        if (_midiDebugWindow != null)
+        {
+            // Close existing window
+            _midiDebugWindow.Close();
+            _midiDebugWindow = null;
+            _trayManager?.UpdateMidiDebugVisibility(false);
+        }
+        else
+        {
+            // Open new window
+            _midiDebugWindow = new MidiDebugWindow(_midiManager!, _midiPresets!, _settings!.MidiSettings, _settings, _configService!);
+            _midiDebugWindow.Closed += (_, _) =>
+            {
+                _midiDebugWindow = null;
+                _trayManager?.UpdateMidiDebugVisibility(false);
+            };
+            _midiDebugWindow.Show();
+            _trayManager?.UpdateMidiDebugVisibility(true);
+        }
+    }
+
     private void OnSettingsUpdated(AppSettings settings)
     {
         // Update our local settings reference so AutoPromote works
@@ -213,6 +256,7 @@ public partial class App : Application
         _hotkeyManager?.Dispose();
         _clipboardMonitor?.Dispose();
         _trayManager?.Dispose();
+        _midiDebugWindow?.Close();
         _hudWindow?.Close();
         _messageWindow?.Close();
 

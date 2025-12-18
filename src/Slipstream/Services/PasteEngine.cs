@@ -42,7 +42,16 @@ public class PasteEngine
         if (content == null)
             return;
 
-        Console.WriteLine($"[PasteEngine] PasteFromSlot: Type={content.TypeName}");
+        PasteContent(content);
+    }
+
+    /// <summary>
+    /// Pastes content directly by setting clipboard and sending Ctrl+V.
+    /// </summary>
+    /// <param name="content">The content to paste</param>
+    public void PasteContent(IClipboardContent content)
+    {
+        Console.WriteLine($"[PasteEngine] PasteContent: Type={content.TypeName}");
 
         // Tell clipboard monitor to ignore this change
         _clipboardMonitor?.SetOwnClipboardChange(true);

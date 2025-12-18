@@ -15,6 +15,8 @@ public class MidiManager : IDisposable
     private readonly MidiPresets _presets;
     private readonly CommandRegistry _commandRegistry;
     private Dictionary<string, MidiTrigger> _activeMappings = new();
+    private Dictionary<string, MidiTrigger> _processorChords = new();
+    private readonly HashSet<string> _heldProcessorChords = new();
     private MidiTrigger? _copyModifier;
     private bool _copyModifierHeld = false;
     private readonly object _lock = new();
@@ -36,9 +38,19 @@ public class MidiManager : IDisposable
     public event EventHandler<MidiNoteEventArgs>? RawNoteReceived;
 
     /// <summary>
+    /// Fires when processor chord held state changes
+    /// </summary>
+    public event EventHandler? ProcessorChordsChanged;
+
+    /// <summary>
     /// Currently connected device name, or null if none
     /// </summary>
     public string? CurrentDevice => _inputDevice?.Name;
+
+    /// <summary>
+    /// Gets the set of currently held processor chord names (e.g., "Uppercase", "Grayscale")
+    /// </summary>
+    public IReadOnlySet<string> HeldProcessorChords => _heldProcessorChords;
 
     /// <summary>
     /// Whether MIDI is currently active and listening
@@ -156,6 +168,7 @@ public class MidiManager : IDisposable
         var preset = _presets.GetPreset(_settings.ActivePreset);
         _activeMappings = new Dictionary<string, MidiTrigger>(preset.Mappings);
         _copyModifier = preset.CopyModifier;
+        _processorChords = new Dictionary<string, MidiTrigger>(preset.ProcessorChords);
 
         // Override with custom mappings
         foreach (var custom in _settings.CustomMappings)
@@ -169,7 +182,16 @@ public class MidiManager : IDisposable
             _copyModifier = _settings.CopyModifier;
         }
 
-        Console.WriteLine($"[MIDI] Loaded {_activeMappings.Count} mappings from preset '{_settings.ActivePreset}'");
+        // Override processor chords if set
+        if (_settings.ProcessorChords != null)
+        {
+            foreach (var chord in _settings.ProcessorChords)
+            {
+                _processorChords[chord.Key] = chord.Value;
+            }
+        }
+
+        Console.WriteLine($"[MIDI] Loaded {_activeMappings.Count} mappings, {_processorChords.Count} processor chords from preset '{_settings.ActivePreset}'");
     }
 
     private bool ConnectToDevice()
@@ -237,6 +259,11 @@ public class MidiManager : IDisposable
             {
                 _inputDevice = null;
                 _copyModifierHeld = false;
+                if (_heldProcessorChords.Count > 0)
+                {
+                    _heldProcessorChords.Clear();
+                    ProcessorChordsChanged?.Invoke(this, EventArgs.Empty);
+                }
                 Console.WriteLine($"[MIDI] Disconnected from: {oldDevice}");
                 DeviceChanged?.Invoke(this, new MidiDeviceEventArgs(oldDevice, false));
             }
@@ -354,12 +381,12 @@ public class MidiManager : IDisposable
 
         Console.WriteLine($"[MIDI] Note On: note={noteNumber}, velocity={velocity}, channel={channel}");
 
-        // In edit mode, fire raw events instead of processing actions
+        // Always fire raw events for visualization (debug window, etc.)
+        RawNoteReceived?.Invoke(this, new MidiNoteEventArgs(noteNumber, velocity, channel, true));
+
+        // In edit mode, don't process actions (just visualize)
         if (_editMode)
-        {
-            RawNoteReceived?.Invoke(this, new MidiNoteEventArgs(noteNumber, velocity, channel, true));
             return;
-        }
 
         // Check if this is the copy modifier
         if (IsTriggerMatch(_copyModifier, MidiTriggerType.NoteOn, channel, noteNumber, velocity))
@@ -367,6 +394,20 @@ public class MidiManager : IDisposable
             _copyModifierHeld = true;
             Console.WriteLine("[MIDI] Copy modifier held");
             return;
+        }
+
+        // Check if this is a processor chord
+        foreach (var (processorName, trigger) in _processorChords)
+        {
+            if (IsTriggerMatch(trigger, MidiTriggerType.NoteOn, channel, noteNumber, velocity))
+            {
+                if (_heldProcessorChords.Add(processorName))
+                {
+                    Console.WriteLine($"[MIDI] Processor chord held: {processorName}");
+                    ProcessorChordsChanged?.Invoke(this, EventArgs.Empty);
+                }
+                return;
+            }
         }
 
         // Find matching action
@@ -385,12 +426,12 @@ public class MidiManager : IDisposable
         int noteNumber = (int)noteOff.NoteNumber;
         int channel = noteOff.Channel;
 
-        // In edit mode, fire raw events
+        // Always fire raw events for visualization
+        RawNoteReceived?.Invoke(this, new MidiNoteEventArgs(noteNumber, 0, channel, false));
+
+        // In edit mode, don't process actions
         if (_editMode)
-        {
-            RawNoteReceived?.Invoke(this, new MidiNoteEventArgs(noteNumber, 0, channel, false));
             return;
-        }
 
         // Check if copy modifier released
         if (_copyModifier != null &&
@@ -399,6 +440,20 @@ public class MidiManager : IDisposable
         {
             _copyModifierHeld = false;
             Console.WriteLine("[MIDI] Copy modifier released");
+        }
+
+        // Check if processor chord released
+        foreach (var (processorName, trigger) in _processorChords)
+        {
+            if (trigger.Type == MidiTriggerType.NoteOn && MatchesChannelAndNumber(trigger, channel, noteNumber))
+            {
+                if (_heldProcessorChords.Remove(processorName))
+                {
+                    Console.WriteLine($"[MIDI] Processor chord released: {processorName}");
+                    ProcessorChordsChanged?.Invoke(this, EventArgs.Empty);
+                }
+                return;
+            }
         }
     }
 

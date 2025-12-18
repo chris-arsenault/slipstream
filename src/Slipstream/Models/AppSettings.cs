@@ -27,6 +27,8 @@ public class AppSettings
     public double? HudWindowY { get; set; } = null;
     public double? SettingsWindowX { get; set; } = null;
     public double? SettingsWindowY { get; set; } = null;
+    public double? MidiDebugWindowX { get; set; } = null;
+    public double? MidiDebugWindowY { get; set; } = null;
 
     // Hotkey bindings: action name -> binding
     public Dictionary<string, HotkeyBinding> HotkeyBindings { get; set; } = new()

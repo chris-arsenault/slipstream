@@ -6,6 +6,7 @@ using SkiaSharp.Views.Desktop;
 using SkiaSharp.Views.WPF;
 using Slipstream.Models;
 using Slipstream.Native;
+using Slipstream.Processing;
 using Slipstream.Services;
 
 namespace Slipstream.UI;
@@ -17,6 +18,8 @@ public partial class HudWindow : Window
     private readonly ConfigService _configService;
     private readonly AppSettings _settings;
     private readonly HashSet<string> _stickyApps;
+    private ProcessorToggleState? _processorToggleState;
+    private ProcessorActivation? _processorActivation;
 
     public HudWindow(SlotManager slotManager, ConfigService configService, AppSettings settings)
     {
@@ -35,6 +38,23 @@ public partial class HudWindow : Window
 
         // Save position when window is moved
         LocationChanged += OnLocationChanged;
+    }
+
+    /// <summary>
+    /// Sets the processor toggle state for displaying armed processor badges.
+    /// </summary>
+    public void SetProcessorToggleState(ProcessorToggleState toggleState)
+    {
+        _processorToggleState = toggleState;
+        _processorToggleState.StateChanged += (_, _) => Refresh();
+    }
+
+    /// <summary>
+    /// Sets the processor activation for getting MIDI chord processors.
+    /// </summary>
+    public void SetProcessorActivation(ProcessorActivation activation)
+    {
+        _processorActivation = activation;
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -61,13 +81,14 @@ public partial class HudWindow : Window
         const float slotHeight = 32f;
         const float slotSpacing = 4f;
         const float separatorHeight = 8f;
+        const float headerHeight = 24f; // Reserved space for processor badges
 
         int slotCount = _slotManager.SlotCount;
         bool hasTempSlot = true; // Always have temp slot
 
-        // Calculate content height
+        // Calculate content height (includes header space for processor badges)
         int totalSlots = slotCount + (hasTempSlot ? 1 : 0);
-        float contentHeight = padding * 2 + totalSlots * slotHeight + (totalSlots - 1) * slotSpacing + separatorHeight;
+        float contentHeight = padding * 2 + headerHeight + totalSlots * slotHeight + (totalSlots - 1) * slotSpacing + separatorHeight;
 
         // Set window size (WPF uses device-independent units, which matches our drawing)
         Height = contentHeight;
@@ -133,8 +154,15 @@ public partial class HudWindow : Window
         float dpiScale = (float)(source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0);
 
         bool isRoundRobinMode = _slotManager.SlotBehavior == Models.SlotBehavior.RoundRobin;
+        var toggledProcessors = _processorToggleState?.GetToggledDefinitions().ToList();
+        var chordProcessors = _processorActivation?.GetMidiChords();
+        List<ProcessorDefinition>? chordDefinitions = null;
+        if (chordProcessors?.Count > 0)
+        {
+            chordDefinitions = ProcessorDefinitions.All.Where(d => chordProcessors.Contains(d.Name)).ToList();
+        }
         _renderer.Render(canvas, size, _slotManager.GetAllSlots(), _slotManager.ActiveSlotIndex,
-            _slotManager.TempSlot, dpiScale, _slotManager.NextRoundRobinIndex, isRoundRobinMode);
+            _slotManager.TempSlot, dpiScale, _slotManager.NextRoundRobinIndex, isRoundRobinMode, toggledProcessors, chordDefinitions);
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)

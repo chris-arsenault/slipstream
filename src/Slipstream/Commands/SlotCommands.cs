@@ -65,11 +65,30 @@ public class PasteFromSlotCommand : ISlotCommand
         var slot = _context.SlotManager.GetSlot(SlotIndex);
         if (slot?.HasContent != true) return;
 
+        var content = slot.GetContent();
+        if (content == null) return;
+
         Console.WriteLine($"[PasteFromSlotCommand] Pasting from slot {SlotIndex}: Type={slot.Type}");
 
+        // Apply active processors
+        var activeSet = _context.ProcessorActivation.GetActiveSet();
+        if (activeSet.Count > 0)
+        {
+            Console.WriteLine($"[PasteFromSlotCommand] Applying {activeSet.Count} processor(s): {string.Join(", ", activeSet)}");
+            var processed = _context.ProcessorRegistry.ExecuteActiveSet(content, activeSet);
+            if (processed != null)
+            {
+                content = processed;
+            }
+            else
+            {
+                Console.WriteLine($"[PasteFromSlotCommand] Processing failed, using original content");
+            }
+        }
+
         // Run paste on background thread to avoid blocking message pump
-        var slotToPaste = slot;
-        Task.Run(() => _context.PasteEngine.PasteFromSlot(slotToPaste));
+        var contentToPaste = content;
+        Task.Run(() => _context.PasteEngine.PasteContent(contentToPaste));
     }
 }
 

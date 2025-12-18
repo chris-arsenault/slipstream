@@ -30,4 +30,11 @@ public class MidiControlScheme
     /// Optional copy modifier for this scheme (hold to switch paste to copy)
     /// </summary>
     public MidiTrigger? CopyModifier { get; init; }
+
+    /// <summary>
+    /// Processor chord mappings - hold these notes to apply processors on paste.
+    /// Key: Processor name (e.g., "Uppercase", "Grayscale")
+    /// Value: MIDI trigger to hold (NoteOn only)
+    /// </summary>
+    public Dictionary<string, MidiTrigger> ProcessorChords { get; init; } = new();
 }

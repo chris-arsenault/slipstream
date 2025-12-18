@@ -9,7 +9,7 @@ A lightweight, high-performance clipboard manager for Windows that gives you sup
 **[Download Slipstream](https://github.com/chris-arsenault/slipstream/releases/latest)** — grab the installer or portable exe and start using it in seconds.
 
 <p align="center">
-  <img src="docs/imgs/demo.gif" alt="Slipstream Demo" width="600">
+  <img src="docs/imgs/demo.gif" alt="Slipstream Demo" width="580">
 </p>
 
 ## Why Slipstream?
@@ -42,9 +42,7 @@ The temp slot is your clipboard's short-term memory. Numbered slots are for thin
 
 ## The HUD
 
-<p align="center">
-  <img src="docs/imgs/hud.png" alt="Slipstream HUD" width="300">
-</p>
+<img src="docs/imgs/hud.png" alt="Slipstream HUD" width="220" align="right">
 
 Toggle the HUD via system tray or `Ctrl+Alt+H`. It shows:
 
@@ -56,42 +54,86 @@ Toggle the HUD via system tray or `Ctrl+Alt+H`. It shows:
 
 The HUD stays out of your way—drag it anywhere, and it remembers its position.
 
+<br clear="both">
+
+## Transforms
+
+Apply real-time transformations to clipboard content when pasting. Toggle transforms on/off or hold MIDI keys as "chords" to apply them.
+
+**Text Transforms:**
+
+| Transform | Description | Priority |
+|-----------|-------------|----------|
+| Upper | Convert to UPPERCASE | 10 |
+| Lower | Convert to lowercase | 20 |
+| Reverse | Reverse the text | 25 |
+| Strip | Remove formatting (RTF/HTML → plain text) | 30 |
+| Trim | Remove leading/trailing whitespace | 40 |
+| NoLines | Remove all line breaks | 45 |
+| Newline | Add exactly one trailing newline | 50 |
+
+**Image Transforms:**
+
+| Transform | Description | Priority |
+|-----------|-------------|----------|
+| Gray | Convert to grayscale | 100 |
+| Invert | Invert colors | 110 |
+| Rotate | Rotate 90° clockwise | 120 |
+| Flip | Flip horizontally | 130 |
+
+Transforms execute in priority order, so you can combine them predictably:
+- `Strip + Trim + Newline` → Clean plain text with exactly one trailing newline
+- `Upper + Trim` → Uppercase text with no extra whitespace
+- `Gray + Invert` → Inverted grayscale image
+
+**Using Transforms:**
+- **Hotkey toggle**: Assign hotkeys in Settings > Hotkeys to toggle transforms on/off
+- **MIDI chords**: In the MIDI editor, assign notes to the "Transform" category—hold the note while pasting
+
+Active transforms show as badges on the HUD (solid = toggled on, outline = MIDI chord held).
+
 ## MIDI Controller Support
 
 <p align="center">
-  <img src="docs/imgs/midi.png" alt="MIDI Editor" width="500">
+  <img src="docs/imgs/midi.gif" alt="MIDI Demo" width="580">
 </p>
 
-Slipstream supports MIDI controllers for clipboard management. Map any MIDI note to paste, copy, or control actions.
+Slipstream supports MIDI controllers for clipboard management. Map any MIDI note to paste, copy, control, or transform actions.
+
+<img src="docs/imgs/midi.png" alt="MIDI Editor" width="340" align="right">
 
 **Features:**
 - Visual piano keyboard editor for creating custom mappings
 - Preset support for popular controllers (Launchkey Mini, etc.)
-- Real-time MIDI input visualization
+- Real-time MIDI input visualization with debug overlay
 - **Copy Modifier** - Hold one key to transform paste actions into copy actions
+- **Transform Chords** - Hold keys to apply transforms while pasting
 
 **Setup:**
 1. Open Settings > MIDI section
 2. Select your MIDI device from the dropdown
 3. Choose a preset or click "New" to create custom mappings
-4. Map notes to actions: Paste/Copy slots 1-10, Toggle HUD, Cycle slots, and more
+4. Map notes to actions: Paste/Copy slots 1-10, Toggle HUD, Cycle slots, Transforms, and more
+
+<br clear="both">
 
 ## Settings
 
-<p align="center">
-  <img src="docs/imgs/settings.png" alt="Settings Window" width="400">
-</p>
+<img src="docs/imgs/settings.png" alt="Settings Window" width="280" align="left">
 
 Right-click the tray icon and select Settings to configure:
 
-- **Slot Behavior** - Auto-promote and Round Robin vs Fixed mode
-- **Startup** - Launch with Windows, start minimized
-- **HUD** - Show on startup, click-through mode
-- **Appearance** - Choose from Dark, Light, or Terminal themes
-- **MIDI** - Device selection and preset management
-- **Data** - Clear all slots, reset hotkeys
+**General Tab:** Startup options, HUD visibility, data management
+
+**Behavior Tab:** Theme selection, slot behavior (Auto-promote, Round Robin vs Fixed), Sticky Apps
+
+**MIDI Tab:** Device selection, preset management, transform chord configuration
+
+**Hotkeys Tab:** View and edit all keyboard shortcuts—click any binding to capture a new key combo
 
 Settings and window positions are saved automatically.
+
+<br clear="both">
 
 ## Slot Behavior Modes
 

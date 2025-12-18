@@ -89,6 +89,28 @@ public class ReverseTextProcessor : IContentProcessor
 }
 
 /// <summary>
+/// Adds a single newline at the end of text.
+/// Useful after Trim to guarantee exactly one trailing newline.
+/// </summary>
+public class AddNewlineProcessor : IContentProcessor
+{
+    public string Name => "AddNewline";
+    public string Description => "Add a single newline at the end";
+    public string[] SupportedTypes => ["Text"];
+
+    public bool CanProcess(IClipboardContent content) => content is TextContent;
+
+    public IClipboardContent? Process(IClipboardContent content, ProcessorOptions? options = null)
+    {
+        if (content is not TextContent text)
+            return null;
+
+        // Add exactly one newline at the end
+        return new TextContent(text.Text + "\n");
+    }
+}
+
+/// <summary>
 /// Removes all line breaks from text.
 /// </summary>
 public class RemoveLineBreaksProcessor : IContentProcessor

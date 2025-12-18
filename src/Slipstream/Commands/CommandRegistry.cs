@@ -50,6 +50,14 @@ public partial class CommandRegistry
         RegisterExact("PromoteTempSlot", () => new PromoteTempSlotCommand(_context));
         RegisterExact("PasteFromActiveSlot", () => new PasteFromActiveSlotCommand(_context));
 
+        // Register processor toggle commands
+        RegisterExact("ClearProcessorToggles", () => new ClearProcessorTogglesCommand(_context.ProcessorToggleState));
+        foreach (var definition in ProcessorDefinitions.All)
+        {
+            var name = definition.Name; // Capture for closure
+            RegisterExact($"ToggleProcessor{name}", () => new ToggleProcessorCommand(_context.ProcessorToggleState, name));
+        }
+
         // Register slot-based command factories
         RegisterSlotFactory("CopyToSlot", (name, slot) => new CopyToSlotCommand(_context, slot));
         RegisterSlotFactory("PasteFromSlot", (name, slot) => new PasteFromSlotCommand(_context, slot));

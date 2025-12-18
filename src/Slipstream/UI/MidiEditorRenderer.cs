@@ -1,5 +1,6 @@
 using SkiaSharp;
 using Slipstream.Models;
+using Slipstream.Processing;
 using Slipstream.Services;
 
 namespace Slipstream.UI;
@@ -67,7 +68,8 @@ public class MidiEditorRenderer : BaseRenderer
         Paste,
         Copy,
         Control,
-        CopyModifier
+        CopyModifier,
+        Processor
     }
 
     public MidiEditorRenderer(MidiControlScheme preset, MidiPresets midiPresets, ConfigService configService)
@@ -94,14 +96,16 @@ public class MidiEditorRenderer : BaseRenderer
         ["category_copy"] = () => _selectedCategory = ActionCategory.Copy,
         ["category_control"] = () => _selectedCategory = ActionCategory.Control,
         ["category_copymod"] = () => { _selectedCategory = ActionCategory.CopyModifier; if (_selectedNote >= 0) SetCopyModifier(_selectedNote); },
-        ["category_none"] = () => { _selectedCategory = ActionCategory.None; if (_selectedNote >= 0) { ClearMappingForNote(_selectedNote); if (_editingPreset.CopyModifier?.Number == _selectedNote) ClearCopyModifier(); } }
+        ["category_processor"] = () => _selectedCategory = ActionCategory.Processor,
+        ["category_none"] = () => { _selectedCategory = ActionCategory.None; if (_selectedNote >= 0) { ClearMappingForNote(_selectedNote); ClearProcessorChord(_selectedNote); if (_editingPreset.CopyModifier?.Number == _selectedNote) ClearCopyModifier(); } }
     };
 
     private List<(string Prefix, Action<string> Handler)> InitializePrefixHandlers() =>
     [
         ("key_", noteStr => SelectNote(int.Parse(noteStr))),
         ("slot_", slotStr => HandleSlotAction(int.Parse(slotStr))),
-        ("control_", HandleControlAction)
+        ("control_", HandleControlAction),
+        ("processor_", HandleProcessorAction)
     ];
 
     private void HandleSlotAction(int slot)
@@ -123,6 +127,12 @@ public class MidiEditorRenderer : BaseRenderer
     {
         if (_selectedNote >= 0)
             AssignAction(_selectedNote, actionId);
+    }
+
+    private void HandleProcessorAction(string processorName)
+    {
+        if (_selectedNote >= 0)
+            AssignProcessorChord(_selectedNote, processorName);
     }
 
     public void SetNotePressed(int note, bool pressed)
@@ -147,6 +157,7 @@ public class MidiEditorRenderer : BaseRenderer
 
         // Auto-detect category from current mapping
         var currentAction = GetActionForNote(note);
+        var currentProcessor = GetProcessorForNote(note);
         if (currentAction != null)
         {
             if (currentAction.StartsWith("PasteFrom"))
@@ -155,6 +166,10 @@ public class MidiEditorRenderer : BaseRenderer
                 _selectedCategory = ActionCategory.Copy;
             else
                 _selectedCategory = ActionCategory.Control;
+        }
+        else if (currentProcessor != null)
+        {
+            _selectedCategory = ActionCategory.Processor;
         }
         else if (_editingPreset.CopyModifier?.Number == note)
         {
@@ -399,6 +414,7 @@ public class MidiEditorRenderer : BaseRenderer
     {
         // Remove any existing mapping for this note
         ClearMappingForNote(note);
+        ClearProcessorChord(note);
 
         // Also clear copy modifier if this note was the copy modifier
         if (_editingPreset.CopyModifier?.Number == note)
@@ -420,7 +436,8 @@ public class MidiEditorRenderer : BaseRenderer
                 Description = _editingPreset.Description,
                 DeviceHint = _editingPreset.DeviceHint,
                 Mappings = newMappings,
-                CopyModifier = _editingPreset.CopyModifier
+                CopyModifier = _editingPreset.CopyModifier,
+                ProcessorChords = _editingPreset.ProcessorChords
             };
             _hasUnsavedChanges = true;
         }
@@ -445,7 +462,8 @@ public class MidiEditorRenderer : BaseRenderer
                 Description = _editingPreset.Description,
                 DeviceHint = _editingPreset.DeviceHint,
                 Mappings = newMappings,
-                CopyModifier = _editingPreset.CopyModifier
+                CopyModifier = _editingPreset.CopyModifier,
+                ProcessorChords = _editingPreset.ProcessorChords
             };
             _hasUnsavedChanges = true;
         }
@@ -455,6 +473,7 @@ public class MidiEditorRenderer : BaseRenderer
     {
         // Clear any existing action mapping for this note first
         ClearMappingForNote(note);
+        ClearProcessorChord(note);
 
         _editingPreset = new MidiControlScheme
         {
@@ -462,7 +481,8 @@ public class MidiEditorRenderer : BaseRenderer
             Description = _editingPreset.Description,
             DeviceHint = _editingPreset.DeviceHint,
             Mappings = _editingPreset.Mappings,
-            CopyModifier = MidiTrigger.NoteOn(note)
+            CopyModifier = MidiTrigger.NoteOn(note),
+            ProcessorChords = _editingPreset.ProcessorChords
         };
         _hasUnsavedChanges = true;
     }
@@ -475,9 +495,76 @@ public class MidiEditorRenderer : BaseRenderer
             Description = _editingPreset.Description,
             DeviceHint = _editingPreset.DeviceHint,
             Mappings = _editingPreset.Mappings,
-            CopyModifier = null
+            CopyModifier = null,
+            ProcessorChords = _editingPreset.ProcessorChords
         };
         _hasUnsavedChanges = true;
+    }
+
+    private void AssignProcessorChord(int note, string processorName)
+    {
+        // Clear any existing mapping or processor chord for this note
+        ClearMappingForNote(note);
+        ClearProcessorChord(note);
+
+        // Also clear copy modifier if this note was the copy modifier
+        if (_editingPreset.CopyModifier?.Number == note)
+        {
+            ClearCopyModifier();
+        }
+
+        var trigger = MidiTrigger.NoteOn(note);
+        var newChords = new Dictionary<string, MidiTrigger>(_editingPreset.ProcessorChords)
+        {
+            [processorName] = trigger
+        };
+
+        _editingPreset = new MidiControlScheme
+        {
+            Name = _editingPreset.Name,
+            Description = _editingPreset.Description,
+            DeviceHint = _editingPreset.DeviceHint,
+            Mappings = _editingPreset.Mappings,
+            CopyModifier = _editingPreset.CopyModifier,
+            ProcessorChords = newChords
+        };
+        _hasUnsavedChanges = true;
+    }
+
+    private void ClearProcessorChord(int note)
+    {
+        var newChords = new Dictionary<string, MidiTrigger>();
+        foreach (var (processor, trigger) in _editingPreset.ProcessorChords)
+        {
+            if (trigger.Number != note)
+            {
+                newChords[processor] = trigger;
+            }
+        }
+
+        if (newChords.Count != _editingPreset.ProcessorChords.Count)
+        {
+            _editingPreset = new MidiControlScheme
+            {
+                Name = _editingPreset.Name,
+                Description = _editingPreset.Description,
+                DeviceHint = _editingPreset.DeviceHint,
+                Mappings = _editingPreset.Mappings,
+                CopyModifier = _editingPreset.CopyModifier,
+                ProcessorChords = newChords
+            };
+            _hasUnsavedChanges = true;
+        }
+    }
+
+    private string? GetProcessorForNote(int note)
+    {
+        foreach (var (processor, trigger) in _editingPreset.ProcessorChords)
+        {
+            if (trigger.Number == note)
+                return processor;
+        }
+        return null;
     }
 
     private void SavePreset()
@@ -488,7 +575,8 @@ public class MidiEditorRenderer : BaseRenderer
             Description = _editingDescription,
             DeviceHint = _editingDeviceHint,
             Mappings = _editingPreset.Mappings,
-            CopyModifier = _editingPreset.CopyModifier
+            CopyModifier = _editingPreset.CopyModifier,
+            ProcessorChords = _editingPreset.ProcessorChords
         };
 
         _configService.SaveMidiPreset(_editingPreset);
@@ -744,6 +832,7 @@ public class MidiEditorRenderer : BaseRenderer
         bool isSelected = _selectedNote == note;
         bool isHovered = _hoveredButton == $"key_{note}";
         string? mappedAction = GetActionForNote(note);
+        string? mappedProcessor = GetProcessorForNote(note);
         bool isCopyModifier = _editingPreset.CopyModifier?.Number == note;
 
         _pianoKeys.Add(new PianoKey(note, keyRect, false));
@@ -755,6 +844,8 @@ public class MidiEditorRenderer : BaseRenderer
             keyColor = new SKColor(200, 220, 255);
         else if (mappedAction != null)
             keyColor = GetActionColor(mappedAction).WithAlpha(80);
+        else if (mappedProcessor != null)
+            keyColor = new SKColor(220, 80, 120).WithAlpha(80);
         else if (isCopyModifier)
             keyColor = new SKColor(200, 150, 255);
         else if (isHovered)
@@ -791,9 +882,11 @@ public class MidiEditorRenderer : BaseRenderer
         };
         canvas.DrawText(noteName, keyRect.MidX, keyRect.Bottom - 6, notePaint);
 
-        if (mappedAction != null || isCopyModifier)
+        if (mappedAction != null || mappedProcessor != null || isCopyModifier)
         {
-            var dotColor = isCopyModifier ? new SKColor(150, 100, 200) : GetActionColor(mappedAction!);
+            var dotColor = isCopyModifier ? new SKColor(150, 100, 200)
+                : mappedProcessor != null ? new SKColor(220, 80, 120)
+                : GetActionColor(mappedAction!);
             using var dotPaint = new SKPaint { Color = dotColor, IsAntialias = true };
             canvas.DrawCircle(keyRect.MidX, keyRect.Top + 12, 5, dotPaint);
         }
@@ -807,6 +900,7 @@ public class MidiEditorRenderer : BaseRenderer
         bool isSelected = _selectedNote == note;
         bool isHovered = _hoveredButton == $"key_{note}";
         string? mappedAction = GetActionForNote(note);
+        string? mappedProcessor = GetProcessorForNote(note);
         bool isCopyModifier = _editingPreset.CopyModifier?.Number == note;
 
         _pianoKeys.Add(new PianoKey(note, keyRect, true));
@@ -818,6 +912,8 @@ public class MidiEditorRenderer : BaseRenderer
             keyColor = new SKColor(100, 120, 180);
         else if (mappedAction != null)
             keyColor = GetActionColor(mappedAction).WithAlpha(180);
+        else if (mappedProcessor != null)
+            keyColor = new SKColor(220, 80, 120).WithAlpha(180);
         else if (isCopyModifier)
             keyColor = new SKColor(120, 80, 160);
         else if (isHovered)
@@ -838,9 +934,11 @@ public class MidiEditorRenderer : BaseRenderer
             canvas.DrawRoundRect(new SKRoundRect(keyRect, 2), borderPaint);
         }
 
-        if (mappedAction != null || isCopyModifier)
+        if (mappedAction != null || mappedProcessor != null || isCopyModifier)
         {
-            var dotColor = isCopyModifier ? new SKColor(150, 100, 200) : GetActionColor(mappedAction!);
+            var dotColor = isCopyModifier ? new SKColor(150, 100, 200)
+                : mappedProcessor != null ? new SKColor(220, 80, 120)
+                : GetActionColor(mappedAction!);
             using var dotPaint = new SKPaint { Color = dotColor, IsAntialias = true };
             canvas.DrawCircle(keyRect.MidX, keyRect.Top + 10, 4, dotPaint);
         }
@@ -927,10 +1025,10 @@ public class MidiEditorRenderer : BaseRenderer
         y += _textPaint.TextSize + 10;
 
         // Category buttons row
-        float btnWidth = 75f;
-        float btnHeight = 28f;
-        float btnSpacing = 6f;
-        float totalWidth = btnWidth * 5 + btnSpacing * 4;
+        float btnWidth = 68f;
+        float btnHeight = 26f;
+        float btnSpacing = 4f;
+        float totalWidth = btnWidth * 6 + btnSpacing * 5;
         float startX = x + (width - totalWidth) / 2;
 
         var categories = new[]
@@ -939,7 +1037,8 @@ public class MidiEditorRenderer : BaseRenderer
             ("Paste", ActionCategory.Paste, "category_paste", new SKColor(70, 130, 180)),
             ("Copy", ActionCategory.Copy, "category_copy", new SKColor(76, 175, 80)),
             ("Control", ActionCategory.Control, "category_control", new SKColor(255, 152, 0)),
-            ("Modifier", ActionCategory.CopyModifier, "category_copymod", new SKColor(150, 100, 200))
+            ("Modifier", ActionCategory.CopyModifier, "category_copymod", new SKColor(150, 100, 200)),
+            ("Transform", ActionCategory.Processor, "category_processor", new SKColor(220, 80, 120))
         };
 
         float btnX = startX;
@@ -996,8 +1095,75 @@ public class MidiEditorRenderer : BaseRenderer
                 x, y + _secondaryTextPaint.TextSize, _secondaryTextPaint);
             y += _secondaryTextPaint.TextSize + 4;
         }
+        else if (_selectedCategory == ActionCategory.Processor)
+        {
+            y = DrawProcessorSelector(canvas, x, y, width);
+        }
 
         return y;
+    }
+
+    private float DrawProcessorSelector(SKCanvas canvas, float x, float y, float width)
+    {
+        canvas.DrawText("Hold key to apply transform on paste:", x, y + _textPaint.TextSize, _textPaint);
+        y += _textPaint.TextSize + 6;
+
+        var processors = ProcessorDefinitions.All.ToList();
+        float btnWidth = 80f;
+        float btnHeight = 26f;
+        float btnSpacing = 4f;
+        int buttonsPerRow = 4;
+        float totalRowWidth = btnWidth * buttonsPerRow + btnSpacing * (buttonsPerRow - 1);
+        float startX = x + (width - totalRowWidth) / 2;
+
+        // Get currently assigned processor
+        string? currentProcessor = GetProcessorForNote(_selectedNote);
+        SKColor processorColor = new SKColor(220, 80, 120);
+
+        for (int i = 0; i < processors.Count; i++)
+        {
+            int row = i / buttonsPerRow;
+            int col = i % buttonsPerRow;
+
+            float btnX = startX + col * (btnWidth + btnSpacing);
+            float btnY = y + row * (btnHeight + btnSpacing);
+            var btnRect = new SKRect(btnX, btnY, btnX + btnWidth, btnY + btnHeight);
+
+            var def = processors[i];
+            bool isSelected = currentProcessor == def.Name;
+            bool isHovered = _hoveredButton == $"processor_{def.Name}";
+
+            SKColor bgColor = isSelected ? processorColor : (isHovered ? processorColor.WithAlpha(100) : _theme.Button);
+            using var btnPaint = new SKPaint { Color = bgColor, IsAntialias = true };
+            canvas.DrawRoundRect(new SKRoundRect(btnRect, 4), btnPaint);
+
+            if (isSelected)
+            {
+                using var borderPaint = new SKPaint
+                {
+                    Color = SKColors.White,
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 2f
+                };
+                canvas.DrawRoundRect(new SKRoundRect(btnRect, 4), borderPaint);
+            }
+
+            using var txtPaint = new SKPaint
+            {
+                Color = _theme.Text,
+                IsAntialias = true,
+                TextSize = 10f,
+                TextAlign = SKTextAlign.Center,
+                Typeface = SKTypeface.FromFamilyName("Segoe UI", isSelected ? SKFontStyle.Bold : SKFontStyle.Normal)
+            };
+            canvas.DrawText(def.DisplayName, btnRect.MidX, btnRect.MidY + 3, txtPaint);
+
+            _buttons.Add(new ButtonRect($"processor_{def.Name}", btnRect));
+        }
+
+        int numRows = (processors.Count + buttonsPerRow - 1) / buttonsPerRow;
+        return y + numRows * (btnHeight + btnSpacing);
     }
 
     private float DrawSlotSelector(SKCanvas canvas, float x, float y, float width)
@@ -1163,6 +1329,34 @@ public class MidiEditorRenderer : BaseRenderer
             };
             canvas.DrawText($"{noteName} = Copy Modifier", x, y + modPaint.TextSize, modPaint);
             y += modPaint.TextSize + 3;
+        }
+
+        // Processor chords
+        foreach (var (processor, trigger) in _editingPreset.ProcessorChords.OrderBy(m => m.Value.Number))
+        {
+            if (y - startY > maxHeight - 20) break;
+
+            string noteName = GetNoteName(trigger.Number);
+            var def = ProcessorDefinitions.GetByName(processor);
+            string displayName = def?.DisplayName ?? processor;
+
+            using var procPaint = new SKPaint
+            {
+                Color = new SKColor(220, 80, 120),
+                IsAntialias = true,
+                TextSize = 10f,
+                Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Normal)
+            };
+
+            float mappingX = x + column * columnWidth;
+            canvas.DrawText($"{noteName} = {displayName}", mappingX, y + procPaint.TextSize, procPaint);
+
+            column++;
+            if (column >= 2)
+            {
+                column = 0;
+                y += procPaint.TextSize + 3;
+            }
         }
 
         // Regular mappings
