@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Threading;
 using Slipstream.Commands;
 using Slipstream.Models;
+using Slipstream.Processing;
 using Slipstream.Services;
 using Slipstream.UI;
 
@@ -25,6 +26,9 @@ public partial class App : Application
     private HashSet<string>? _stickyApps;
     private CommandRegistry? _commandRegistry;
     private CommandContext? _commandContext;
+    private ProcessorToggleState? _processorToggleState;
+    private ProcessorActivation? _processorActivation;
+    private ProcessorRegistry? _processorRegistry;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -48,6 +52,11 @@ public partial class App : Application
         // Initialize sticky apps from settings (case-insensitive)
         _stickyApps = new HashSet<string>(_settings.StickyApps, StringComparer.OrdinalIgnoreCase);
 
+        // Initialize processor toggle state
+        _processorToggleState = new ProcessorToggleState();
+        _processorActivation = new ProcessorActivation(_processorToggleState);
+        _processorRegistry = new ProcessorRegistry();
+
         _keyboardSequencer = new KeyboardSequencer(new KeyboardSimulator());
         _pasteEngine = new PasteEngine(_keyboardSequencer);
 
@@ -60,6 +69,7 @@ public partial class App : Application
 
         // Create HUD window
         _hudWindow = new HudWindow(_slotManager, _configService, _settings);
+        _hudWindow.SetProcessorToggleState(_processorToggleState);
 
         // Initialize command system
         _commandContext = new CommandContext(
@@ -67,9 +77,12 @@ public partial class App : Application
             _clipboardMonitor,
             _pasteEngine,
             _keyboardSequencer,
+            _processorToggleState,
+            _processorActivation,
+            _processorRegistry,
             _hudWindow,
             _stickyApps);
-        _commandRegistry = new CommandRegistry(_commandContext);
+        _commandRegistry = new CommandRegistry(_commandContext, _processorRegistry);
 
         // Initialize hotkey manager using message window
         _hotkeyManager = new HotkeyManager(hwnd, hwndSource, _commandRegistry);

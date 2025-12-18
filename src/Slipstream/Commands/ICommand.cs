@@ -47,6 +47,9 @@ public interface ICommandContext
     Services.ClipboardMonitor ClipboardMonitor { get; }
     Services.PasteEngine PasteEngine { get; }
     Services.KeyboardSequencer KeyboardSequencer { get; }
+    Processing.ProcessorToggleState ProcessorToggleState { get; }
+    Processing.ProcessorActivation ProcessorActivation { get; }
+    Processing.ProcessorRegistry ProcessorRegistry { get; }
     UI.HudWindow? HudWindow { get; }
     HashSet<string> StickyApps { get; }
 }

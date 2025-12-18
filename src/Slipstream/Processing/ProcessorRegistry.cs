@@ -62,6 +62,59 @@ public class ProcessorRegistry
     public IEnumerable<IContentProcessor> GetAllProcessors() => _processors.Values;
 
     /// <summary>
+    /// Executes a set of processors in priority order on the given content.
+    /// Returns the transformed content, or null if any processor fails.
+    /// </summary>
+    public IClipboardContent? ExecuteActiveSet(IClipboardContent content, IReadOnlySet<string> activeProcessors)
+    {
+        if (activeProcessors.Count == 0)
+            return content;
+
+        var current = content;
+
+        // Get definitions for active processors, sorted by priority
+        var activeDefinitions = ProcessorDefinitions.All
+            .Where(d => activeProcessors.Contains(d.Name))
+            .OrderBy(d => d.Priority);
+
+        foreach (var definition in activeDefinitions)
+        {
+            var processor = GetProcessor(definition.Name);
+            if (processor == null)
+            {
+                Console.WriteLine($"[ProcessorRegistry] Processor not found: {definition.Name}");
+                continue;
+            }
+
+            if (!processor.CanProcess(current))
+            {
+                Console.WriteLine($"[ProcessorRegistry] Processor '{definition.Name}' cannot process {current.TypeName}, skipping");
+                continue;
+            }
+
+            try
+            {
+                var result = processor.Process(current);
+                if (result == null)
+                {
+                    Console.WriteLine($"[ProcessorRegistry] Processor '{definition.Name}' returned null");
+                    return null;
+                }
+
+                Console.WriteLine($"[ProcessorRegistry] Applied '{definition.Name}' (priority {definition.Priority}): {current.TypeName} -> {result.TypeName}");
+                current = result;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ProcessorRegistry] Error in '{definition.Name}': {ex.Message}");
+                return null;
+            }
+        }
+
+        return current;
+    }
+
+    /// <summary>
     /// Processes content using the named processor.
     /// Returns the processed content, or null if processing fails.
     /// </summary>

@@ -6,6 +6,7 @@ using SkiaSharp.Views.Desktop;
 using SkiaSharp.Views.WPF;
 using Slipstream.Models;
 using Slipstream.Native;
+using Slipstream.Processing;
 using Slipstream.Services;
 
 namespace Slipstream.UI;
@@ -17,6 +18,7 @@ public partial class HudWindow : Window
     private readonly ConfigService _configService;
     private readonly AppSettings _settings;
     private readonly HashSet<string> _stickyApps;
+    private ProcessorToggleState? _processorToggleState;
 
     public HudWindow(SlotManager slotManager, ConfigService configService, AppSettings settings)
     {
@@ -35,6 +37,15 @@ public partial class HudWindow : Window
 
         // Save position when window is moved
         LocationChanged += OnLocationChanged;
+    }
+
+    /// <summary>
+    /// Sets the processor toggle state for displaying armed processor badges.
+    /// </summary>
+    public void SetProcessorToggleState(ProcessorToggleState toggleState)
+    {
+        _processorToggleState = toggleState;
+        _processorToggleState.StateChanged += (_, _) => Refresh();
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -133,8 +144,9 @@ public partial class HudWindow : Window
         float dpiScale = (float)(source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0);
 
         bool isRoundRobinMode = _slotManager.SlotBehavior == Models.SlotBehavior.RoundRobin;
+        var toggledProcessors = _processorToggleState?.GetToggledDefinitions().ToList();
         _renderer.Render(canvas, size, _slotManager.GetAllSlots(), _slotManager.ActiveSlotIndex,
-            _slotManager.TempSlot, dpiScale, _slotManager.NextRoundRobinIndex, isRoundRobinMode);
+            _slotManager.TempSlot, dpiScale, _slotManager.NextRoundRobinIndex, isRoundRobinMode, toggledProcessors);
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)

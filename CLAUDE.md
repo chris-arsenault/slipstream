@@ -85,6 +85,19 @@ skElement.InvalidateVisual();
 - Don't use `OpenClipboard`, `CloseClipboard`, `SetClipboardData`, `GetClipboardData` directly
 - **Use WPF `Clipboard` class** for all clipboard read/write operations - it handles formats, lifetime, and thread safety correctly
 
+## Test Integrity (CRITICAL)
+**NEVER modify tests to make them pass.** Tests exist to enforce specific behavior contracts:
+- If a test fails, the implementation is wrong - fix the implementation, not the test
+- Tests document expected behavior (e.g., modifier keys must be restored after paste operations)
+- Changing test expectations to match broken code defeats the purpose of testing
+- When debugging a regression, the failing test tells you what behavior broke - investigate why
+
+Example: If `SendPasteWithModifierRelease_WhenCtrlShiftHeld_RestoresCtrlShiftAtEnd` fails, it means:
+1. The modifier restoration logic is broken
+2. Find what change broke it
+3. Fix the implementation to restore modifiers correctly
+4. Do NOT rename the test or change its assertions
+
 ## Default Hotkeys
 - Copy to slot N: `Ctrl+Alt+[1-0]`
 - Paste from slot N: `Ctrl+Shift+[1-0]`

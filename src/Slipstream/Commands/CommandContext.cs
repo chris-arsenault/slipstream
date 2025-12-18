@@ -1,3 +1,4 @@
+using Slipstream.Processing;
 using Slipstream.Services;
 using Slipstream.UI;
 
@@ -12,6 +13,9 @@ public class CommandContext : ICommandContext
     public ClipboardMonitor ClipboardMonitor { get; }
     public PasteEngine PasteEngine { get; }
     public KeyboardSequencer KeyboardSequencer { get; }
+    public ProcessorToggleState ProcessorToggleState { get; }
+    public ProcessorActivation ProcessorActivation { get; }
+    public ProcessorRegistry ProcessorRegistry { get; }
     public HudWindow? HudWindow { get; set; }
     public HashSet<string> StickyApps { get; set; }
 
@@ -20,6 +24,9 @@ public class CommandContext : ICommandContext
         ClipboardMonitor clipboardMonitor,
         PasteEngine pasteEngine,
         KeyboardSequencer keyboardSequencer,
+        ProcessorToggleState processorToggleState,
+        ProcessorActivation processorActivation,
+        ProcessorRegistry processorRegistry,
         HudWindow? hudWindow = null,
         HashSet<string>? stickyApps = null)
     {
@@ -27,6 +34,9 @@ public class CommandContext : ICommandContext
         ClipboardMonitor = clipboardMonitor;
         PasteEngine = pasteEngine;
         KeyboardSequencer = keyboardSequencer;
+        ProcessorToggleState = processorToggleState;
+        ProcessorActivation = processorActivation;
+        ProcessorRegistry = processorRegistry;
         HudWindow = hudWindow;
         StickyApps = stickyApps ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     }

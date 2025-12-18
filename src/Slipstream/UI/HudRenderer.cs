@@ -1,6 +1,7 @@
 using System.IO;
 using SkiaSharp;
 using Slipstream.Models;
+using Slipstream.Processing;
 
 namespace Slipstream.UI;
 
@@ -94,7 +95,7 @@ public class HudRenderer : BaseRenderer
         _lockIndicatorPaint.Color = _theme.SlotLocked;
     }
 
-    public void Render(SKCanvas canvas, SKSize size, List<ClipboardSlot> slots, int activeSlotIndex, ClipboardSlot? tempSlot = null, float dpiScale = 1.0f, int nextRoundRobinIndex = -1, bool isRoundRobinMode = true)
+    public void Render(SKCanvas canvas, SKSize size, List<ClipboardSlot> slots, int activeSlotIndex, ClipboardSlot? tempSlot = null, float dpiScale = 1.0f, int nextRoundRobinIndex = -1, bool isRoundRobinMode = true, List<ProcessorDefinition>? toggledProcessors = null)
     {
         canvas.Clear(SKColors.Transparent);
 
@@ -110,10 +111,17 @@ public class HudRenderer : BaseRenderer
         _slotRects.Clear();
         _tempSlotPromoteRect = SKRect.Empty;
 
-        // Calculate content height (temp slot + separator + numbered slots)
+        // Determine if we have any processors to show
+        int toggledCount = toggledProcessors?.Count ?? 0;
+        bool hasProcessors = toggledCount > 0;
+
+        // Calculate header height for armed processors
+        float headerHeight = hasProcessors ? 24f : 0f;
+
+        // Calculate content height (header + temp slot + separator + numbered slots)
         int totalSlots = slots.Count + (tempSlot != null ? 1 : 0);
         float separatorHeight = tempSlot != null ? 8f : 0f;
-        float contentHeight = Padding * 2 + totalSlots * SlotHeight + (totalSlots - 1) * SlotSpacing + separatorHeight;
+        float contentHeight = Padding * 2 + headerHeight + totalSlots * SlotHeight + (totalSlots - 1) * SlotSpacing + separatorHeight;
         float actualHeight = Math.Min(contentHeight, size.Height);
 
         // Draw background with rounded corners
@@ -125,6 +133,13 @@ public class HudRenderer : BaseRenderer
         canvas.DrawRoundRect(backgroundRect, _borderPaint);
 
         float y = Padding;
+
+        // Draw processor badges if any
+        if (hasProcessors)
+        {
+            DrawProcessorBadges(canvas, toggledProcessors!, y, size.Width - Padding * 2);
+            y += headerHeight;
+        }
 
         // Draw temp slot first (at top) if it exists
         if (tempSlot != null)
@@ -149,6 +164,44 @@ public class HudRenderer : BaseRenderer
         }
 
         canvas.Restore();
+    }
+
+    private void DrawProcessorBadges(SKCanvas canvas, List<ProcessorDefinition> processors, float y, float width)
+    {
+        float x = Padding;
+        const float badgeHeight = 18f;
+        const float badgePadding = 4f;
+        const float badgeSpacing = 4f;
+        const float badgeCornerRadius = 4f;
+
+        using var solidBadgePaint = CreateFillPaint(_theme.Accent.WithAlpha(180));
+        using var badgeTextPaint = new SKPaint
+        {
+            Color = SKColors.White,
+            IsAntialias = true,
+            TextSize = 10f,
+            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold),
+            TextAlign = SKTextAlign.Center
+        };
+
+        foreach (var processor in processors)
+        {
+            string badge = processor.Badge;
+            float textWidth = badgeTextPaint.MeasureText(badge);
+            float badgeWidth = Math.Max(textWidth + badgePadding * 2, badgeHeight);
+
+            var badgeRect = new SKRoundRect(
+                new SKRect(x, y + 2, x + badgeWidth, y + 2 + badgeHeight),
+                badgeCornerRadius
+            );
+
+            canvas.DrawRoundRect(badgeRect, solidBadgePaint);
+            float textX = x + badgeWidth / 2;
+            float textY = y + 2 + badgeHeight / 2 + badgeTextPaint.TextSize / 3;
+            canvas.DrawText(badge, textX, textY, badgeTextPaint);
+
+            x += badgeWidth + badgeSpacing;
+        }
     }
 
     /// <summary>
