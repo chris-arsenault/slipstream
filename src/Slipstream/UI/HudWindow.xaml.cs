@@ -20,6 +20,7 @@ public partial class HudWindow : Window
     private readonly HashSet<string> _stickyApps;
     private ProcessorToggleState? _processorToggleState;
     private ProcessorActivation? _processorActivation;
+    private IntPtr _hwnd;
 
     public HudWindow(SlotManager slotManager, ConfigService configService, AppSettings settings)
     {
@@ -38,6 +39,11 @@ public partial class HudWindow : Window
 
         // Save position when window is moved
         LocationChanged += OnLocationChanged;
+
+        // Re-assert topmost when window becomes visible or loses focus
+        IsVisibleChanged += OnIsVisibleChanged;
+        Activated += OnActivated;
+        Deactivated += OnDeactivated;
     }
 
     /// <summary>
@@ -59,10 +65,15 @@ public partial class HudWindow : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        // Store hwnd for later use
+        _hwnd = new WindowInteropHelper(this).Handle;
+
         // Make window not show in alt-tab
-        var hwnd = new WindowInteropHelper(this).Handle;
-        int exStyle = Win32.GetWindowLong(hwnd, Win32.GWL_EXSTYLE);
-        Win32.SetWindowLong(hwnd, Win32.GWL_EXSTYLE, exStyle | Win32.WS_EX_TOOLWINDOW);
+        int exStyle = Win32.GetWindowLong(_hwnd, Win32.GWL_EXSTYLE);
+        Win32.SetWindowLong(_hwnd, Win32.GWL_EXSTYLE, exStyle | Win32.WS_EX_TOOLWINDOW);
+
+        // Ensure topmost using Win32 API (more reliable than WPF Topmost)
+        Win32.SetTopmost(_hwnd);
 
         // Calculate proper window size based on slot count
         UpdateWindowSize();
@@ -72,6 +83,35 @@ public partial class HudWindow : Window
 
         // Initial render
         Refresh();
+    }
+
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        // Re-assert topmost whenever window becomes visible
+        // This fixes issues where other topmost windows can steal z-order
+        if ((bool)e.NewValue && _hwnd != IntPtr.Zero)
+        {
+            Win32.SetTopmost(_hwnd);
+        }
+    }
+
+    private void OnActivated(object? sender, EventArgs e)
+    {
+        // Re-assert topmost when activated
+        if (_hwnd != IntPtr.Zero)
+        {
+            Win32.SetTopmost(_hwnd);
+        }
+    }
+
+    private void OnDeactivated(object? sender, EventArgs e)
+    {
+        // Re-assert topmost when deactivated - this is critical
+        // because other windows might have pushed us down in z-order
+        if (_hwnd != IntPtr.Zero)
+        {
+            Win32.SetTopmost(_hwnd);
+        }
     }
 
     private void UpdateWindowSize()
