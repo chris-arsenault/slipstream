@@ -95,7 +95,7 @@ public class HudRenderer : BaseRenderer
         _lockIndicatorPaint.Color = _theme.SlotLocked;
     }
 
-    public void Render(SKCanvas canvas, SKSize size, List<ClipboardSlot> slots, int activeSlotIndex, ClipboardSlot? tempSlot = null, float dpiScale = 1.0f, int nextRoundRobinIndex = -1, bool isRoundRobinMode = true, List<ProcessorDefinition>? toggledProcessors = null)
+    public void Render(SKCanvas canvas, SKSize size, List<ClipboardSlot> slots, int activeSlotIndex, ClipboardSlot? tempSlot = null, float dpiScale = 1.0f, int nextRoundRobinIndex = -1, bool isRoundRobinMode = true, List<ProcessorDefinition>? toggledProcessors = null, List<ProcessorDefinition>? chordProcessors = null)
     {
         canvas.Clear(SKColors.Transparent);
 
@@ -113,7 +113,8 @@ public class HudRenderer : BaseRenderer
 
         // Determine if we have any processors to show
         int toggledCount = toggledProcessors?.Count ?? 0;
-        bool hasProcessors = toggledCount > 0;
+        int chordCount = chordProcessors?.Count ?? 0;
+        bool hasProcessors = toggledCount > 0 || chordCount > 0;
 
         // Calculate header height for armed processors
         float headerHeight = hasProcessors ? 24f : 0f;
@@ -137,7 +138,7 @@ public class HudRenderer : BaseRenderer
         // Draw processor badges if any
         if (hasProcessors)
         {
-            DrawProcessorBadges(canvas, toggledProcessors!, y, size.Width - Padding * 2);
+            DrawProcessorBadges(canvas, toggledProcessors, chordProcessors, y, size.Width - Padding * 2);
             y += headerHeight;
         }
 
@@ -166,7 +167,7 @@ public class HudRenderer : BaseRenderer
         canvas.Restore();
     }
 
-    private void DrawProcessorBadges(SKCanvas canvas, List<ProcessorDefinition> processors, float y, float width)
+    private void DrawProcessorBadges(SKCanvas canvas, List<ProcessorDefinition>? toggledProcessors, List<ProcessorDefinition>? chordProcessors, float y, float width)
     {
         float x = Padding;
         const float badgeHeight = 18f;
@@ -175,7 +176,8 @@ public class HudRenderer : BaseRenderer
         const float badgeCornerRadius = 4f;
 
         using var solidBadgePaint = CreateFillPaint(_theme.Accent.WithAlpha(180));
-        using var badgeTextPaint = new SKPaint
+        using var outlineBadgePaint = CreateStrokePaint(_theme.Accent, 2f);
+        using var solidTextPaint = new SKPaint
         {
             Color = SKColors.White,
             IsAntialias = true,
@@ -183,24 +185,66 @@ public class HudRenderer : BaseRenderer
             Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold),
             TextAlign = SKTextAlign.Center
         };
-
-        foreach (var processor in processors)
+        using var outlineTextPaint = new SKPaint
         {
-            string badge = processor.Badge;
-            float textWidth = badgeTextPaint.MeasureText(badge);
-            float badgeWidth = Math.Max(textWidth + badgePadding * 2, badgeHeight);
+            Color = _theme.Accent,
+            IsAntialias = true,
+            TextSize = 10f,
+            Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold),
+            TextAlign = SKTextAlign.Center
+        };
 
-            var badgeRect = new SKRoundRect(
-                new SKRect(x, y + 2, x + badgeWidth, y + 2 + badgeHeight),
-                badgeCornerRadius
-            );
+        // Track which processors are already drawn to avoid duplicates
+        var drawn = new HashSet<string>();
 
-            canvas.DrawRoundRect(badgeRect, solidBadgePaint);
-            float textX = x + badgeWidth / 2;
-            float textY = y + 2 + badgeHeight / 2 + badgeTextPaint.TextSize / 3;
-            canvas.DrawText(badge, textX, textY, badgeTextPaint);
+        // Draw toggled processors (solid)
+        if (toggledProcessors != null)
+        {
+            foreach (var processor in toggledProcessors)
+            {
+                if (!drawn.Add(processor.Name)) continue;
 
-            x += badgeWidth + badgeSpacing;
+                string badge = processor.Badge;
+                float textWidth = solidTextPaint.MeasureText(badge);
+                float badgeWidth = Math.Max(textWidth + badgePadding * 2, badgeHeight);
+
+                var badgeRect = new SKRoundRect(
+                    new SKRect(x, y + 2, x + badgeWidth, y + 2 + badgeHeight),
+                    badgeCornerRadius
+                );
+
+                canvas.DrawRoundRect(badgeRect, solidBadgePaint);
+                float textX = x + badgeWidth / 2;
+                float textY = y + 2 + badgeHeight / 2 + solidTextPaint.TextSize / 3;
+                canvas.DrawText(badge, textX, textY, solidTextPaint);
+
+                x += badgeWidth + badgeSpacing;
+            }
+        }
+
+        // Draw chord processors (outline) - skip if already drawn as toggled
+        if (chordProcessors != null)
+        {
+            foreach (var processor in chordProcessors)
+            {
+                if (!drawn.Add(processor.Name)) continue;
+
+                string badge = processor.Badge;
+                float textWidth = outlineTextPaint.MeasureText(badge);
+                float badgeWidth = Math.Max(textWidth + badgePadding * 2, badgeHeight);
+
+                var badgeRect = new SKRoundRect(
+                    new SKRect(x, y + 2, x + badgeWidth, y + 2 + badgeHeight),
+                    badgeCornerRadius
+                );
+
+                canvas.DrawRoundRect(badgeRect, outlineBadgePaint);
+                float textX = x + badgeWidth / 2;
+                float textY = y + 2 + badgeHeight / 2 + outlineTextPaint.TextSize / 3;
+                canvas.DrawText(badge, textX, textY, outlineTextPaint);
+
+                x += badgeWidth + badgeSpacing;
+            }
         }
     }
 

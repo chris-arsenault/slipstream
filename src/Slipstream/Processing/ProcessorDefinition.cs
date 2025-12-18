@@ -25,10 +25,11 @@ public static class ProcessorDefinitions
     // Text processors (10-69)
     public static readonly ProcessorDefinition Uppercase = new("Uppercase", "Upper", 10, 'U');
     public static readonly ProcessorDefinition Lowercase = new("Lowercase", "Lower", 20, 'L');
+    public static readonly ProcessorDefinition ReverseText = new("ReverseText", "Reverse", 25, 'R');
     public static readonly ProcessorDefinition StripFormatting = new("StripFormatting", "Strip", 30, 'S');
     public static readonly ProcessorDefinition TrimWhitespace = new("TrimWhitespace", "Trim", 40, 'T');
-    public static readonly ProcessorDefinition RemoveLineBreaks = new("RemoveLineBreaks", "NoLines", 50, 'N');
-    public static readonly ProcessorDefinition ReverseText = new("ReverseText", "Reverse", 60, 'R');
+    public static readonly ProcessorDefinition RemoveLineBreaks = new("RemoveLineBreaks", "NoLines", 45, 'N');
+    public static readonly ProcessorDefinition AddNewline = new("AddNewline", "Newline", 50, 'A');
 
     // Image processors (100-199)
     public static readonly ProcessorDefinition Grayscale = new("Grayscale", "Gray", 100, 'G');
@@ -45,6 +46,7 @@ public static class ProcessorDefinitions
         Lowercase,
         StripFormatting,
         TrimWhitespace,
+        AddNewline,
         RemoveLineBreaks,
         ReverseText,
         Grayscale,

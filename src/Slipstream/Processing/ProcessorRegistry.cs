@@ -14,6 +14,7 @@ public class ProcessorRegistry
     {
         // Register built-in text processors
         Register(new TrimWhitespaceProcessor());
+        Register(new AddNewlineProcessor());
         Register(new UppercaseProcessor());
         Register(new LowercaseProcessor());
         Register(new ReverseTextProcessor());

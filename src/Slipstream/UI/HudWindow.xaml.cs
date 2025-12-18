@@ -19,6 +19,7 @@ public partial class HudWindow : Window
     private readonly AppSettings _settings;
     private readonly HashSet<string> _stickyApps;
     private ProcessorToggleState? _processorToggleState;
+    private ProcessorActivation? _processorActivation;
 
     public HudWindow(SlotManager slotManager, ConfigService configService, AppSettings settings)
     {
@@ -46,6 +47,14 @@ public partial class HudWindow : Window
     {
         _processorToggleState = toggleState;
         _processorToggleState.StateChanged += (_, _) => Refresh();
+    }
+
+    /// <summary>
+    /// Sets the processor activation for getting MIDI chord processors.
+    /// </summary>
+    public void SetProcessorActivation(ProcessorActivation activation)
+    {
+        _processorActivation = activation;
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -145,8 +154,14 @@ public partial class HudWindow : Window
 
         bool isRoundRobinMode = _slotManager.SlotBehavior == Models.SlotBehavior.RoundRobin;
         var toggledProcessors = _processorToggleState?.GetToggledDefinitions().ToList();
+        var chordProcessors = _processorActivation?.GetMidiChords();
+        List<ProcessorDefinition>? chordDefinitions = null;
+        if (chordProcessors?.Count > 0)
+        {
+            chordDefinitions = ProcessorDefinitions.All.Where(d => chordProcessors.Contains(d.Name)).ToList();
+        }
         _renderer.Render(canvas, size, _slotManager.GetAllSlots(), _slotManager.ActiveSlotIndex,
-            _slotManager.TempSlot, dpiScale, _slotManager.NextRoundRobinIndex, isRoundRobinMode, toggledProcessors);
+            _slotManager.TempSlot, dpiScale, _slotManager.NextRoundRobinIndex, isRoundRobinMode, toggledProcessors, chordDefinitions);
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)

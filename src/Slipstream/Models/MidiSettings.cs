@@ -35,6 +35,12 @@ public class MidiSettings
     /// Minimum velocity to register a note (0-127, default 1 = any touch)
     /// </summary>
     public int VelocityThreshold { get; set; } = 1;
+
+    /// <summary>
+    /// Custom processor chord mappings - hold these notes to apply processors on paste.
+    /// Key: Processor name (e.g., "Uppercase", "Grayscale")
+    /// </summary>
+    public Dictionary<string, MidiTrigger>? ProcessorChords { get; set; } = null;
 }
 
 /// <summary>

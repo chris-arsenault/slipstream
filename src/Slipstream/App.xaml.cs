@@ -70,6 +70,7 @@ public partial class App : Application
         // Create HUD window
         _hudWindow = new HudWindow(_slotManager, _configService, _settings);
         _hudWindow.SetProcessorToggleState(_processorToggleState);
+        _hudWindow.SetProcessorActivation(_processorActivation);
 
         // Initialize command system
         _commandContext = new CommandContext(
@@ -92,7 +93,11 @@ public partial class App : Application
         _midiPresets = new MidiPresets(_configService);
         _midiManager = new MidiManager(_settings.MidiSettings, _midiPresets, _commandRegistry);
         _midiManager.DeviceChanged += OnMidiDeviceChanged;
+        _midiManager.ProcessorChordsChanged += (_, _) => _hudWindow?.Refresh();
         _midiManager.Start();
+
+        // Connect MIDI chord provider to processor activation
+        _processorActivation.SetMidiChordProvider(() => _midiManager.HeldProcessorChords);
 
         // Initialize tray
         _trayManager = new TrayManager(
