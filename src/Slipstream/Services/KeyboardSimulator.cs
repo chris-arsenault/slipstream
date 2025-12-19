@@ -1,208 +1,201 @@
-using Slipstream.Native;
+using Slipstream.Services.Keyboard;
 
 namespace Slipstream.Services;
 
 /// <summary>
-/// Production implementation using Win32 keybd_event API.
-/// </summary>
-public class KeyboardSimulator : IKeyboardSimulator
-{
-    public void KeyDown(byte virtualKey)
-    {
-        Win32.keybd_event(virtualKey, 0, 0, UIntPtr.Zero);
-    }
-
-    public void KeyUp(byte virtualKey)
-    {
-        Win32.keybd_event(virtualKey, 0, Win32.KEYEVENTF_KEYUP_EVENT, UIntPtr.Zero);
-    }
-
-    public void Sleep(int milliseconds)
-    {
-        Thread.Sleep(milliseconds);
-    }
-
-    public bool IsKeyPhysicallyDown(byte virtualKey)
-    {
-        return Win32.IsKeyPhysicallyDown(virtualKey);
-    }
-
-    public byte[]? GetKeyboardState()
-    {
-        var state = new byte[256];
-        return Win32.GetKeyboardState(state) ? state : null;
-    }
-
-    public void SetKeyboardState(byte[] state)
-    {
-        Win32.SetKeyboardState(state);
-    }
-}
-
-/// <summary>
 /// Generates keyboard sequences for copy/paste operations.
-/// Uses snapshot/restore approach: captures modifier state before operation,
-/// clears modifiers, performs operation, then restores original state.
+/// Uses atomic SendInput batching for reliable modifier handling.
+///
+/// Design:
+/// 1. Capture both logical state (what OS thinks) and physical state (what user holds)
+/// 2. Build a complete atomic sequence that handles state transition
+/// 3. Send everything in one SendInput call - no interleaving possible
+/// 4. Use operation lifecycle for cleanup instead of timestamp tracking
 /// </summary>
 public class KeyboardSequencer
 {
-    private readonly IKeyboardSimulator _simulator;
+    private readonly IInputInjector _injector;
+    private readonly KeyboardOperationBuilder _builder = new();
+    private readonly object _operationLock = new();
 
-    // Virtual key codes - generic (used for simulation)
-    public const byte VK_CONTROL = 0x11;
-    public const byte VK_SHIFT = 0x10;
-    public const byte VK_MENU = 0x12; // Alt
-    public const byte VK_C = 0x43;
-    public const byte VK_V = 0x56;
+    // Operation lifecycle tracking for safety net
+    private DateTime? _operationStartTime;
 
-    // Virtual key codes - left/right specific (for physical state detection and release)
-    public const byte VK_LCONTROL = 0xA2;
-    public const byte VK_RCONTROL = 0xA3;
-    public const byte VK_LSHIFT = 0xA0;
-    public const byte VK_RSHIFT = 0xA1;
-    public const byte VK_LMENU = 0xA4; // Left Alt
-    public const byte VK_RMENU = 0xA5; // Right Alt
+    // Safety net threshold - if operation started but didn't complete within this time, cleanup
+    private static readonly TimeSpan OperationTimeout = TimeSpan.FromSeconds(2);
 
-    // Modifier key indices for keyboard state array (high bit = key down)
-    private static readonly byte[] ModifierKeys = { VK_CONTROL, VK_SHIFT, VK_MENU, VK_LCONTROL, VK_RCONTROL, VK_LSHIFT, VK_RSHIFT, VK_LMENU, VK_RMENU };
-
-    public KeyboardSequencer(IKeyboardSimulator simulator)
+    /// <summary>
+    /// Creates a KeyboardSequencer with the production AtomicInputInjector.
+    /// </summary>
+    public KeyboardSequencer() : this(new AtomicInputInjector())
     {
-        _simulator = simulator;
     }
 
     /// <summary>
-    /// Sends Ctrl+C to copy selection.
-    /// Snapshots current modifier state, clears modifiers, sends Ctrl+C, restores state.
+    /// Creates a KeyboardSequencer with a custom injector (for testing).
+    /// </summary>
+    public KeyboardSequencer(IInputInjector injector)
+    {
+        _injector = injector;
+    }
+
+    /// <summary>
+    /// Sends Ctrl+C atomically with proper modifier state management.
     /// </summary>
     public void SendCopyWithModifierRelease()
     {
-        // Snapshot which modifiers are physically held
-        var heldModifiers = SnapshotHeldModifiers();
-
-        // Release all modifiers
-        ReleaseAllModifiers();
-        _simulator.Sleep(5);
-
-        // Send clean Ctrl+C
-        _simulator.KeyDown(VK_CONTROL);
-        _simulator.KeyDown(VK_C);
-        _simulator.KeyUp(VK_C);
-        _simulator.KeyUp(VK_CONTROL);
-
-        // Restore modifiers that were physically held
-        RestoreModifiers(heldModifiers);
+        SendKeyComboWithModifierRelease(VirtualKeys.C);
     }
 
     /// <summary>
-    /// Sends Ctrl+V to paste.
-    /// Snapshots current modifier state, clears modifiers, sends Ctrl+V, restores state.
+    /// Sends Ctrl+V atomically with proper modifier state management.
     /// </summary>
     public void SendPasteWithModifierRelease()
     {
-        // Snapshot which modifiers are physically held
-        var heldModifiers = SnapshotHeldModifiers();
-
-        // Release all modifiers
-        ReleaseAllModifiers();
-        _simulator.Sleep(5);
-
-        // Send clean Ctrl+V
-        _simulator.KeyDown(VK_CONTROL);
-        _simulator.KeyDown(VK_V);
-        _simulator.KeyUp(VK_V);
-        _simulator.KeyUp(VK_CONTROL);
-
-        // Restore modifiers that were physically held
-        RestoreModifiers(heldModifiers);
+        SendKeyComboWithModifierRelease(VirtualKeys.V);
     }
 
     /// <summary>
-    /// Captures which modifier keys are currently physically held down.
+    /// Sends Ctrl+[key] atomically with proper modifier state management.
+    ///
+    /// The sequence:
+    /// 1. Capture physical state (what user is holding) - this is what we restore to
+    /// 2. Capture logical state (what OS thinks) - this is what we need to correct
+    /// 3. Build atomic sequence: release all → Ctrl+Key → restore to physical
+    /// 4. Send everything in one call
     /// </summary>
-    private ModifierSnapshot SnapshotHeldModifiers()
+    private void SendKeyComboWithModifierRelease(byte keyCode)
     {
-        return new ModifierSnapshot
+        lock (_operationLock)
         {
-            Control = _simulator.IsKeyPhysicallyDown(VK_LCONTROL) || _simulator.IsKeyPhysicallyDown(VK_RCONTROL) || _simulator.IsKeyPhysicallyDown(VK_CONTROL),
-            Shift = _simulator.IsKeyPhysicallyDown(VK_LSHIFT) || _simulator.IsKeyPhysicallyDown(VK_RSHIFT) || _simulator.IsKeyPhysicallyDown(VK_SHIFT),
-            Alt = _simulator.IsKeyPhysicallyDown(VK_LMENU) || _simulator.IsKeyPhysicallyDown(VK_RMENU) || _simulator.IsKeyPhysicallyDown(VK_MENU)
-        };
+            // Capture states BEFORE we do anything
+            var physicalState = ModifierState.CapturePhysical(_injector);
+            var logicalState = ModifierState.CaptureLogical(_injector);
+
+            Console.WriteLine($"[KeyboardSequencer] Sending Ctrl+0x{keyCode:X2} - Physical: {physicalState}, Logical: {logicalState}");
+
+            // Mark operation start for safety net
+            _operationStartTime = DateTime.UtcNow;
+
+            try
+            {
+                _builder.Clear();
+
+                // Step 1: Release ALL modifiers (both generic and left/right variants)
+                // This ensures we start from a known clean state regardless of logical state
+                _builder.ReleaseAllModifiers();
+
+                // Step 2: Press Ctrl, press key, release key, release Ctrl
+                _builder.KeyDown(VirtualKeys.Control);
+                _builder.KeyPress(keyCode);
+                _builder.KeyUp(VirtualKeys.Control);
+
+                // Step 3: Restore modifiers to match what user is physically holding
+                // We transition from None (after our Ctrl+Key) to physical state
+                _builder.TransitionModifiers(ModifierState.None, physicalState);
+
+                // Step 4: Send atomically - NO INTERLEAVING POSSIBLE
+                var events = _builder.Build();
+                Console.WriteLine($"[KeyboardSequencer] Sending {events.Length} events atomically");
+                _injector.SendBatch(events);
+
+                // Operation complete
+                _operationStartTime = null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[KeyboardSequencer] Operation failed: {ex.Message}");
+                // Leave operation time set so safety net can clean up
+                throw;
+            }
+        }
     }
 
     /// <summary>
-    /// Re-presses modifiers that were held before the operation.
-    /// </summary>
-    private void RestoreModifiers(ModifierSnapshot snapshot)
-    {
-        if (snapshot.Control)
-            _simulator.KeyDown(VK_CONTROL);
-
-        if (snapshot.Shift)
-            _simulator.KeyDown(VK_SHIFT);
-
-        if (snapshot.Alt)
-            _simulator.KeyDown(VK_MENU);
-    }
-
-    /// <summary>
-    /// Releases all modifier keys unconditionally (both generic and left/right variants).
-    /// Call this on app shutdown or when modifiers appear stuck.
+    /// Releases all modifier keys unconditionally.
+    /// Call this on app shutdown.
     /// </summary>
     public void ReleaseAllModifiers()
     {
-        // Release generic keys
-        _simulator.KeyUp(VK_CONTROL);
-        _simulator.KeyUp(VK_SHIFT);
-        _simulator.KeyUp(VK_MENU);
-
-        // Release left variants
-        _simulator.KeyUp(VK_LCONTROL);
-        _simulator.KeyUp(VK_LSHIFT);
-        _simulator.KeyUp(VK_LMENU);
-
-        // Release right variants
-        _simulator.KeyUp(VK_RCONTROL);
-        _simulator.KeyUp(VK_RSHIFT);
-        _simulator.KeyUp(VK_RMENU);
+        lock (_operationLock)
+        {
+            _builder.Clear();
+            _builder.ReleaseAllModifiers();
+            _injector.SendBatch(_builder.Build());
+            _operationStartTime = null;
+        }
     }
 
     /// <summary>
-    /// Releases any modifier keys that aren't physically held down.
-    /// Safe to call periodically to clean up stuck keys.
+    /// Safety net: Checks if an operation timed out and performs recovery.
+    ///
+    /// This is a TRUE safety net - it only activates if:
+    /// 1. An operation started but never completed (exception during SendInput?)
+    /// 2. Sufficient time has passed (not just slow execution)
+    /// 3. Logical state differs from physical state (something is actually stuck)
+    ///
+    /// Safe to call periodically. Does nothing if everything is normal.
     /// </summary>
     public void CleanupStuckModifiers()
     {
-        bool ctrlHeld = _simulator.IsKeyPhysicallyDown(VK_LCONTROL) || _simulator.IsKeyPhysicallyDown(VK_RCONTROL) || _simulator.IsKeyPhysicallyDown(VK_CONTROL);
-        bool shiftHeld = _simulator.IsKeyPhysicallyDown(VK_LSHIFT) || _simulator.IsKeyPhysicallyDown(VK_RSHIFT) || _simulator.IsKeyPhysicallyDown(VK_SHIFT);
-        bool altHeld = _simulator.IsKeyPhysicallyDown(VK_LMENU) || _simulator.IsKeyPhysicallyDown(VK_RMENU) || _simulator.IsKeyPhysicallyDown(VK_MENU);
-
-        if (!ctrlHeld)
+        lock (_operationLock)
         {
-            _simulator.KeyUp(VK_CONTROL);
-            _simulator.KeyUp(VK_LCONTROL);
-            _simulator.KeyUp(VK_RCONTROL);
-        }
+            // Check if we have a potentially stuck operation
+            if (_operationStartTime == null)
+                return; // No operation in flight
 
-        if (!shiftHeld)
-        {
-            _simulator.KeyUp(VK_SHIFT);
-            _simulator.KeyUp(VK_LSHIFT);
-            _simulator.KeyUp(VK_RSHIFT);
-        }
+            if (DateTime.UtcNow - _operationStartTime < OperationTimeout)
+                return; // Give it time
 
-        if (!altHeld)
-        {
-            _simulator.KeyUp(VK_MENU);
-            _simulator.KeyUp(VK_LMENU);
-            _simulator.KeyUp(VK_RMENU);
-        }
-    }
+            Console.WriteLine("[KeyboardSequencer] Operation timeout detected, checking for stuck modifiers");
 
-    private struct ModifierSnapshot
-    {
-        public bool Control;
-        public bool Shift;
-        public bool Alt;
+            // Operation appears to have failed mid-flight
+            var logical = ModifierState.CaptureLogical(_injector);
+            var physical = ModifierState.CapturePhysical(_injector);
+
+            // Only act if logical differs from physical (something is stuck)
+            if (logical == physical)
+            {
+                Console.WriteLine("[KeyboardSequencer] States match, no cleanup needed");
+                _operationStartTime = null;
+                return;
+            }
+
+            Console.WriteLine($"[KeyboardSequencer] State mismatch - Logical: {logical}, Physical: {physical}");
+
+            // Reconcile: release logically-down keys that aren't physically held
+            _builder.Clear();
+
+            if (logical.Ctrl && !physical.Ctrl)
+            {
+                Console.WriteLine("[KeyboardSequencer] Releasing stuck Ctrl");
+                _builder.KeyUp(VirtualKeys.Control);
+                _builder.KeyUp(VirtualKeys.LeftControl);
+                _builder.KeyUp(VirtualKeys.RightControl);
+            }
+
+            if (logical.Shift && !physical.Shift)
+            {
+                Console.WriteLine("[KeyboardSequencer] Releasing stuck Shift");
+                _builder.KeyUp(VirtualKeys.Shift);
+                _builder.KeyUp(VirtualKeys.LeftShift);
+                _builder.KeyUp(VirtualKeys.RightShift);
+            }
+
+            if (logical.Alt && !physical.Alt)
+            {
+                Console.WriteLine("[KeyboardSequencer] Releasing stuck Alt");
+                _builder.KeyUp(VirtualKeys.Alt);
+                _builder.KeyUp(VirtualKeys.LeftAlt);
+                _builder.KeyUp(VirtualKeys.RightAlt);
+            }
+
+            if (_builder.Count > 0)
+            {
+                _injector.SendBatch(_builder.Build());
+            }
+
+            _operationStartTime = null;
+        }
     }
 }

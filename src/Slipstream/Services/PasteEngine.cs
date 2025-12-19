@@ -14,7 +14,7 @@ public class PasteEngine
     private readonly KeyboardSequencer _keyboardSequencer;
     private readonly ContentHandlerRegistry _contentRegistry;
 
-    public PasteEngine() : this(new KeyboardSequencer(new KeyboardSimulator()))
+    public PasteEngine() : this(new KeyboardSequencer())
     {
     }
 

@@ -58,7 +58,8 @@ public partial class App : Application
         _processorActivation = new ProcessorActivation(_processorToggleState);
         _processorRegistry = new ProcessorRegistry();
 
-        _keyboardSequencer = new KeyboardSequencer(new KeyboardSimulator());
+        // Use parameterless constructor for production - uses atomic SendInput batching
+        _keyboardSequencer = new KeyboardSequencer();
         _pasteEngine = new PasteEngine(_keyboardSequencer);
 
         // Initialize clipboard monitor using message window

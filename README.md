@@ -184,7 +184,7 @@ dotnet test
 
 - **.NET 8** / WPF (windowing only)
 - **SkiaSharp** for all UI rendering
-- **NAudio** for MIDI controller support
+- **DryWetMidi** for MIDI controller support
 - Windows clipboard APIs via P/Invoke
 - Zero external runtime dependencies
 
