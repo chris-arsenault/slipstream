@@ -8,7 +8,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>Slipstream</AssemblyName>
     <RootNamespace>Slipstream</RootNamespace>
-    <Version>1.2.2</Version>
+    <Version>1.2.3</Version>
     <Company>Ahara</Company>
     <Authors>Tsonu</Authors>
     <Product>Slipstream</Product>

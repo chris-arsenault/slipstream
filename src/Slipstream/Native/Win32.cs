@@ -45,6 +45,8 @@ internal static class Win32
     public const uint KEYEVENTF_KEYUP = 0x0002;
     public const uint KEYEVENTF_UNICODE = 0x0004;
 
+    // INPUT structure must be sized for the largest union member (MOUSEINPUT = 28 bytes on x64)
+    // Using explicit layout to ensure correct alignment and size
     [StructLayout(LayoutKind.Sequential)]
     public struct INPUT
     {
@@ -52,11 +54,17 @@ internal static class Win32
         public INPUTUNION union;
     }
 
-    [StructLayout(LayoutKind.Explicit)]
+    // Union must be sized to fit MOUSEINPUT (the largest member)
+    // On x64: MOUSEINPUT = 28 bytes, KEYBDINPUT = 24 bytes (with padding), HARDWAREINPUT = 8 bytes
+    [StructLayout(LayoutKind.Explicit, Size = 28)]
     public struct INPUTUNION
     {
         [FieldOffset(0)]
         public KEYBDINPUT ki;
+        [FieldOffset(0)]
+        public MOUSEINPUT mi;
+        [FieldOffset(0)]
+        public HARDWAREINPUT hi;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -69,51 +77,61 @@ internal static class Win32
         public IntPtr dwExtraInfo;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT
+    {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct HARDWAREINPUT
+    {
+        public uint uMsg;
+        public ushort wParamL;
+        public ushort wParamH;
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
-
-    // Virtual key codes
-    public const ushort VK_SHIFT = 0x10;
-    public const ushort VK_CONTROL = 0x11;
-    public const ushort VK_MENU = 0x12; // Alt key
-    public const ushort VK_C = 0x43;
-    public const ushort VK_V = 0x56;
-
-    // Numpad keys
-    public const ushort VK_NUMPAD0 = 0x60;
-    public const ushort VK_NUMPAD1 = 0x61;
-    public const ushort VK_NUMPAD2 = 0x62;
-    public const ushort VK_NUMPAD3 = 0x63;
-    public const ushort VK_NUMPAD4 = 0x64;
-    public const ushort VK_NUMPAD5 = 0x65;
-    public const ushort VK_NUMPAD6 = 0x66;
-    public const ushort VK_NUMPAD7 = 0x67;
-    public const ushort VK_NUMPAD8 = 0x68;
-    public const ushort VK_NUMPAD9 = 0x69;
-
-    // keybd_event - older API that may work where SendInput doesn't
-    [DllImport("user32.dll")]
-    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-
-    public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
-    public const uint KEYEVENTF_KEYUP_EVENT = 0x0002;
 
     #endregion
 
     #region Keyboard State
 
     /// <summary>
-    /// Gets the state of a key. If the high-order bit is 1, the key is down.
+    /// Gets the physical state of a key (hardware). If the high-order bit is 1, the key is down.
+    /// Use this for detecting what the user is physically pressing.
     /// </summary>
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
 
     /// <summary>
-    /// Returns true if the key is currently physically held down.
+    /// Gets the logical state of a key (what Windows believes). If the high-order bit is 1, the key is down.
+    /// Use this for determining what state needs to be corrected before sending input.
+    /// </summary>
+    [DllImport("user32.dll")]
+    public static extern short GetKeyState(int vKey);
+
+    /// <summary>
+    /// Returns true if the key is currently physically held down (hardware state).
     /// </summary>
     public static bool IsKeyPhysicallyDown(int vKey)
     {
         return (GetAsyncKeyState(vKey) & 0x8000) != 0;
+    }
+
+    /// <summary>
+    /// Returns true if the key is logically down (what Windows believes).
+    /// This may differ from physical state due to synthetic input or timing.
+    /// </summary>
+    public static bool IsKeyLogicallyDown(int vKey)
+    {
+        return (GetKeyState(vKey) & 0x8000) != 0;
     }
 
     /// <summary>
