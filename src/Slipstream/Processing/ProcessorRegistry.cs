@@ -116,6 +116,24 @@ public class ProcessorRegistry
     }
 
     /// <summary>
+    /// Executes a pipeline of processors on content.
+    /// </summary>
+    /// <param name="pipeline">The pipeline to execute.</param>
+    /// <param name="content">The content to process.</param>
+    /// <param name="options">Optional processor options.</param>
+    /// <returns>The final processed content, or null if any processor fails.</returns>
+    public IClipboardContent? ExecutePipeline(ProcessorPipeline pipeline, IClipboardContent content, ProcessorOptions? options = null)
+    {
+        if (pipeline == null || pipeline.IsEmpty)
+        {
+            Console.WriteLine("[ProcessorRegistry] Pipeline is null or empty");
+            return null;
+        }
+
+        return pipeline.Execute(this, content, options);
+    }
+
+    /// <summary>
     /// Processes content using the named processor.
     /// Returns the processed content, or null if processing fails.
     /// </summary>

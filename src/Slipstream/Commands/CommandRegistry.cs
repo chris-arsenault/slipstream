@@ -28,6 +28,10 @@ public partial class CommandRegistry
     [GeneratedRegex(@"^Process(.+?)Slot(\d+)$", RegexOptions.Compiled)]
     private static partial Regex ProcessSlotPattern();
 
+    // Regex for picker processor commands: ApplyProcessor1-9
+    [GeneratedRegex(@"^ApplyProcessor(\d)$", RegexOptions.Compiled)]
+    private static partial Regex ApplyProcessorPattern();
+
     public CommandRegistry(ICommandContext context, ProcessorRegistry? processorRegistry = null)
     {
         _context = context;
@@ -63,6 +67,38 @@ public partial class CommandRegistry
         RegisterSlotFactory("PasteFromSlot", (name, slot) => new PasteFromSlotCommand(_context, slot));
         RegisterSlotFactory("LockSlot", (name, slot) => new LockSlotCommand(_context, slot));
         RegisterSlotFactory("ClearSlot", (name, slot) => new ClearSlotCommand(_context, slot));
+
+        // Register processor picker commands
+        RegisterPickerCommands();
+    }
+
+    private void RegisterPickerCommands()
+    {
+        var pickerState = _context.ProcessorPickerState;
+        if (pickerState == null)
+            return;
+
+        // Picker open/close commands
+        RegisterExact("OpenProcessorPicker", () =>
+            new OpenProcessorPickerCommand(_context, pickerState, ProcessorOutputMode.Replace));
+        RegisterExact("OpenProcessorPickerPaste", () =>
+            new OpenProcessorPickerCommand(_context, pickerState, ProcessorOutputMode.Paste));
+        RegisterExact("CloseProcessorPicker", () =>
+            new CloseProcessorPickerCommand(pickerState));
+
+        // Pipeline control commands
+        RegisterExact("ExecutePipeline", () =>
+            new ExecutePipelineCommand(_context, pickerState, _processorRegistry));
+        RegisterExact("RemoveLastFromPipeline", () =>
+            new RemoveLastFromPipelineCommand(pickerState));
+        RegisterExact("CycleOutputMode", () =>
+            new CycleOutputModeCommand(pickerState));
+
+        // Pipeline mode commands (Shift key handling)
+        RegisterExact("EnablePipelineMode", () =>
+            new SetPipelineModeCommand(pickerState, enabled: true));
+        RegisterExact("DisablePipelineMode", () =>
+            new SetPipelineModeCommand(pickerState, enabled: false));
     }
 
     /// <summary>
@@ -131,6 +167,17 @@ public partial class CommandRegistry
                 {
                     return new ProcessSlotCommand(_context, _processorRegistry, slotIndex, processorName);
                 }
+            }
+        }
+
+        // Try picker ApplyProcessor commands (e.g., "ApplyProcessor1", "ApplyProcessor9")
+        var applyProcessorMatch = ApplyProcessorPattern().Match(actionName);
+        if (applyProcessorMatch.Success)
+        {
+            if (int.TryParse(applyProcessorMatch.Groups[1].Value, out int processorIndex) &&
+                _context.ProcessorPickerState != null)
+            {
+                return new ApplyProcessorCommand(_context, _context.ProcessorPickerState, _processorRegistry, processorIndex);
             }
         }
 

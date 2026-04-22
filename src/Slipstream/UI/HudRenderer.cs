@@ -41,8 +41,20 @@ public class HudRenderer : BaseRenderer
     // Hit testing for temp slot promote button
     private SKRect _tempSlotPromoteRect;
 
-    public HudRenderer() : base(ColorTheme.Dark)
+    // Processor picker integration
+    private readonly ProcessorPickerState? _processorPickerState;
+    private readonly ProcessorPickerRenderer _pickerRenderer;
+    private readonly ProcessorRegistry _processorRegistry;
+
+    // Track last picker render height for dynamic window sizing
+    private float _lastPickerHeight;
+
+    public HudRenderer(ProcessorPickerState? processorPickerState = null) : base(ColorTheme.Dark)
     {
+        _processorPickerState = processorPickerState;
+        _pickerRenderer = new ProcessorPickerRenderer();
+        _processorRegistry = new ProcessorRegistry();
+
         _slotPaint = CreateFillPaint(_theme.SlotBackground);
         _activeSlotPaint = CreateFillPaint(_theme.SlotActive);
         _tempSlotPaint = CreateFillPaint(_theme.Accent.WithAlpha(40));
@@ -77,7 +89,13 @@ public class HudRenderer : BaseRenderer
     {
         _theme = ColorTheme.GetTheme(palette);
         UpdatePaintColors();
+        _pickerRenderer.SetTheme(palette);
     }
+
+    /// <summary>
+    /// Gets the height needed to render the picker if it's open.
+    /// </summary>
+    public float GetPickerHeight() => _lastPickerHeight;
 
     protected override void UpdatePaintColors()
     {
@@ -162,6 +180,38 @@ public class HudRenderer : BaseRenderer
             bool isNextRoundRobin = isRoundRobinMode && i == nextRoundRobinIndex;
             DrawSlot(canvas, slots[i], i, y, size.Width - Padding * 2, i == activeSlotIndex, isNextRoundRobin);
             y += SlotHeight + SlotSpacing;
+        }
+
+        // Draw processor picker if open
+        _lastPickerHeight = 0;
+        if (_processorPickerState?.IsOpen == true)
+        {
+            // Get the content from the target slot to filter processors
+            var targetSlot = _processorPickerState.TargetSlotIndex >= 0 && _processorPickerState.TargetSlotIndex < slots.Count
+                ? slots[_processorPickerState.TargetSlotIndex]
+                : tempSlot;
+
+            if (targetSlot?.HasContent == true)
+            {
+                var content = targetSlot.GetContent();
+                if (content != null)
+                {
+                    var availableProcessors = _processorRegistry.GetProcessorsFor(content).ToList();
+                    if (availableProcessors.Count > 0)
+                    {
+                        // Add some space before picker
+                        y += SlotSpacing;
+
+                        _lastPickerHeight = _pickerRenderer.Render(
+                            canvas,
+                            _processorPickerState,
+                            availableProcessors,
+                            y,
+                            size.Width,
+                            dpiScale);
+                    }
+                }
+            }
         }
 
         canvas.Restore();
@@ -643,6 +693,18 @@ public class HudRenderer : BaseRenderer
         }
     }
 
+    /// <summary>
+    /// Hit test for processor picker buttons.
+    /// Returns the 1-based processor index if hit, -1 otherwise.
+    /// </summary>
+    public int HitTestProcessorPicker(float x, float y)
+    {
+        if (_processorPickerState?.IsOpen != true)
+            return -1;
+
+        return _pickerRenderer.HitTestProcessor(x, y);
+    }
+
     public void Dispose()
     {
         // Dispose thumbnail cache
@@ -652,6 +714,9 @@ public class HudRenderer : BaseRenderer
         }
         _thumbnailCache.Clear();
         _thumbnailHashes.Clear();
+
+        // Dispose picker renderer
+        _pickerRenderer.Dispose();
 
         // Dispose base class paints
         _backgroundPaint.Dispose();

@@ -18,6 +18,7 @@ public class CommandContext : ICommandContext
     public ProcessorRegistry ProcessorRegistry { get; }
     public HudWindow? HudWindow { get; set; }
     public HashSet<string> StickyApps { get; set; }
+    public ProcessorPickerState? ProcessorPickerState { get; set; }
 
     public CommandContext(
         SlotManager slotManager,
@@ -28,7 +29,8 @@ public class CommandContext : ICommandContext
         ProcessorActivation processorActivation,
         ProcessorRegistry processorRegistry,
         HudWindow? hudWindow = null,
-        HashSet<string>? stickyApps = null)
+        HashSet<string>? stickyApps = null,
+        ProcessorPickerState? processorPickerState = null)
     {
         SlotManager = slotManager;
         ClipboardMonitor = clipboardMonitor;
@@ -39,5 +41,6 @@ public class CommandContext : ICommandContext
         ProcessorRegistry = processorRegistry;
         HudWindow = hudWindow;
         StickyApps = stickyApps ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        ProcessorPickerState = processorPickerState;
     }
 }

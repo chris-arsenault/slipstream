@@ -21,14 +21,16 @@ public partial class HudWindow : Window
     private ProcessorToggleState? _processorToggleState;
     private ProcessorActivation? _processorActivation;
     private IntPtr _hwnd;
+    private readonly ProcessorPickerState? _processorPickerState;
 
-    public HudWindow(SlotManager slotManager, ConfigService configService, AppSettings settings)
+    public HudWindow(SlotManager slotManager, ConfigService configService, AppSettings settings, ProcessorPickerState? processorPickerState = null)
     {
         InitializeComponent();
         _slotManager = slotManager;
         _configService = configService;
         _settings = settings;
-        _renderer = new HudRenderer();
+        _processorPickerState = processorPickerState;
+        _renderer = new HudRenderer(processorPickerState);
         _stickyApps = new HashSet<string>(settings.StickyApps, StringComparer.OrdinalIgnoreCase);
 
         // Apply initial theme from settings

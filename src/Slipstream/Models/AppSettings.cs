@@ -92,6 +92,10 @@ public class AppSettings
 
         // Paste from active slot (Ctrl+Alt+V)
         ["PasteFromActiveSlot"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Alt, VirtualKey.V),
+
+        // Processor picker (Ctrl+T to open, Ctrl+Shift+T to open in Paste mode)
+        ["OpenProcessorPicker"] = new HotkeyBinding(ModifierKeys.Control, VirtualKey.T),
+        ["OpenProcessorPickerPaste"] = new HotkeyBinding(ModifierKeys.Control | ModifierKeys.Shift, VirtualKey.T),
     };
 
     /// <summary>
@@ -195,6 +199,7 @@ public enum VirtualKey
     Enter = 0x0D,
     Escape = 0x1B,
     Tab = 0x09,
+    Backspace = 0x08,
     Delete = 0x2E,
     Insert = 0x2D,
     Home = 0x24,

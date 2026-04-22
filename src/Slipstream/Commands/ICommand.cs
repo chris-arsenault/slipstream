@@ -52,4 +52,5 @@ public interface ICommandContext
     Processing.ProcessorRegistry ProcessorRegistry { get; }
     UI.HudWindow? HudWindow { get; }
     HashSet<string> StickyApps { get; }
+    Processing.ProcessorPickerState? ProcessorPickerState { get; }
 }

@@ -30,6 +30,7 @@ public partial class App : Application
     private ProcessorToggleState? _processorToggleState;
     private ProcessorActivation? _processorActivation;
     private ProcessorRegistry? _processorRegistry;
+    private ProcessorPickerState? _processorPickerState;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -69,8 +70,12 @@ public partial class App : Application
         // Connect paste engine to clipboard monitor so it can suppress capture during paste
         _pasteEngine.SetClipboardMonitor(_clipboardMonitor);
 
+        // Create processor picker state
+        _processorPickerState = new ProcessorPickerState();
+        _processorPickerState.StateChanged += OnProcessorPickerStateChanged;
+
         // Create HUD window
-        _hudWindow = new HudWindow(_slotManager, _configService, _settings);
+        _hudWindow = new HudWindow(_slotManager, _configService, _settings, _processorPickerState);
         _hudWindow.SetProcessorToggleState(_processorToggleState);
         _hudWindow.SetProcessorActivation(_processorActivation);
 
@@ -84,7 +89,8 @@ public partial class App : Application
             _processorActivation,
             _processorRegistry,
             _hudWindow,
-            _stickyApps);
+            _stickyApps,
+            _processorPickerState);
         _commandRegistry = new CommandRegistry(_commandContext, _processorRegistry);
 
         // Initialize hotkey manager using message window
@@ -176,6 +182,12 @@ public partial class App : Application
 
         // Debounced save
         _configService?.SaveSlotsDebounced(_slotManager!.GetAllSlots());
+    }
+
+    private void OnProcessorPickerStateChanged(object? sender, PickerStateChangedEventArgs e)
+    {
+        // Refresh HUD when picker state changes
+        _hudWindow?.Refresh();
     }
 
     private void OpenSettings()
